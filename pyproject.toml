@@ -1,0 +1,52 @@
+[build-system]
+requires = ["hatchling>=1.26"]
+build-backend = "hatchling.build"
+
+[project]
+name = "datacoding-wiki"
+version = "0.1.0"
+description = "Executable ML and data-coding interview wiki"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "ipykernel>=6.29",
+  "matplotlib>=3.7",
+  "numpy>=1.26",
+  "pandas>=2.1",
+  "scikit-learn>=1.4",
+  "seaborn>=0.13",
+]
+
+[project.optional-dependencies]
+pytorch = [
+  "torch>=2.2",
+  "torchvision>=0.17",
+]
+autogluon = [
+  "autogluon.tabular>=1.6,<1.7",
+]
+pycaret = [
+  "matplotlib<3.8",
+  "numpy<1.27",
+  "pandas<2.2",
+  "pycaret==3.3.2",
+]
+dev = [
+  "jupyterlab>=4.1",
+  "nbclient>=0.10",
+  "nbformat>=5.10",
+  "pytest>=8.0",
+  "ruff>=0.9",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/datacoding"]
+
+[tool.pytest.ini_options]
+addopts = "-q -p no:cacheprovider"
+testpaths = ["tests"]
+
+[tool.ruff]
+cache-dir = "../geek/DataCoding-data/cache/ruff"
+line-length = 100
+target-version = "py311"
