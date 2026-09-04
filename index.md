@@ -2,7 +2,7 @@
 type: map
 status: active
 tags: [home, index, ml, interviews]
-updated: 2026-08-30
+updated: 2026-09-04
 ---
 
 # DataCoding Wiki
@@ -60,5 +60,6 @@ A compact route from numerical Python to end-to-end ML coding.
 
 - [[sources/legacy-coding-audit|Legacy coding source audit]]
 - [[sources/atlassian-ml-coding-guidance|Atlassian ML coding guidance]]
+- [[sources/notebook-fundamentals-audit|Notebook fundamentals audit]]
 - [[log|Activity log]]
 - [Executable tests](tests/)

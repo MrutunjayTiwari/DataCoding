@@ -117,12 +117,12 @@ def build_numpy() -> None:
     cells = [
         contract(
             "NumPy Interview Refresher",
-            study_time="35-45 minutes",
+            study_time="40-50 minutes",
             prerequisites="basic Python expressions and loops",
             mode="quick",
             data_policy="no external files or downloads; seeded synthetic arrays only",
             provenance="consolidated from the legacy NumPy refresher variants and advanced curated cells",
-            goal="Build fast recall for shapes, broadcasting, indexing, vectorization, ranking, linear algebra, and ML primitives.",
+            goal="Build fast recall for shapes, combining, broadcasting, indexing, vectorization, ranking, linear algebra, and ML primitives.",
         ),
         code(
             """
@@ -148,12 +148,17 @@ def build_numpy() -> None:
             """
             vector = np.array([1, 2, 3])
             matrix = np.array([[1, 2], [3, 4]], dtype=np.float32)
+            float_vector = vector.astype(np.float64)
             zeros = np.zeros((2, 3))
             identity = np.eye(3)
             samples = rng.normal(size=(3, 4))
 
             show("Creation | vector (value, dtype, shape)", (vector, vector.dtype, vector.shape))
-            show("Creation | matrix (value, dtype, shape)", (matrix, matrix.dtype, matrix.shape))
+            show(
+                "Creation | matrix metadata",
+                {"shape": matrix.shape, "ndim": matrix.ndim, "size": matrix.size, "dtype": matrix.dtype},
+            )
+            show("Casting | integer vector to floating dtype", float_vector.dtype)
             show("Creation | zeros (2 x 3)", zeros)
             show("Creation | identity matrix", identity)
             show("Creation | seeded normal samples", samples)
@@ -167,14 +172,62 @@ def build_numpy() -> None:
             raveled = reshaped.ravel()
             flattened = reshaped.flatten()
             transposed = reshaped.T
+            expanded_front = reshaped[None, :, :]       # (1, 3, 4)
+            expanded_last = np.expand_dims(reshaped, -1)  # (3, 4, 1)
+            squeezed = np.squeeze(expanded_last, axis=-1) # (3, 4)
 
             show("Shape | base -> reshaped", f"{base.shape} -> {reshaped.shape}")
             show("Memory | ravel shares memory", np.shares_memory(reshaped, raveled))
             show("Memory | flatten shares memory", np.shares_memory(reshaped, flattened))
             show("Shape/memory | transpose", (transposed.shape, np.shares_memory(reshaped, transposed)))
+            show(
+                "Shape | add/remove singleton axes",
+                (expanded_front.shape, expanded_last.shape, squeezed.shape),
+            )
             """
         ),
-        md("## 3. Slicing, boolean masks, and fancy indexing"),
+        md(
+            """
+            ## 3. Combining and splitting arrays
+
+            `concatenate` joins along an existing axis, so every other dimension must match. `stack` inserts a new axis, so every input shape must match. `vstack` and `hstack` are conveniences; prefer an explicit axis when 1-D behavior could be ambiguous.
+            """
+        ),
+        code(
+            """
+            left = np.arange(6).reshape(2, 3)
+            right = left + 10
+
+            concatenated_rows = np.concatenate([left, right], axis=0)    # (4, 3)
+            concatenated_columns = np.concatenate([left, right], axis=1) # (2, 6)
+            stacked_front = np.stack([left, right], axis=0)              # (2, 2, 3)
+            stacked_last = np.stack([left, right], axis=-1)              # (2, 3, 2)
+            equal_halves = np.split(concatenated_rows, 2, axis=0)
+            uneven_chunks = np.array_split(np.arange(7), 3)
+
+            show("Combine | input shapes", (left.shape, right.shape))
+            show(
+                "Combine | concatenate along existing axes",
+                {"axis=0": concatenated_rows.shape, "axis=1": concatenated_columns.shape},
+            )
+            show(
+                "Combine | stack along new axes",
+                {"axis=0": stacked_front.shape, "axis=-1": stacked_last.shape},
+            )
+            show(
+                "Convenience | vstack/hstack equal explicit concatenate",
+                (
+                    np.array_equal(np.vstack([left, right]), concatenated_rows),
+                    np.array_equal(np.hstack([left, right]), concatenated_columns),
+                ),
+            )
+            show(
+                "Split | equal and uneven chunk shapes",
+                ([part.shape for part in equal_halves], [part.shape for part in uneven_chunks]),
+            )
+            """
+        ),
+        md("## 4. Slicing, boolean masks, and fancy indexing"),
         code(
             """
             A = np.arange(20).reshape(4, 5)
@@ -185,18 +238,22 @@ def build_numpy() -> None:
             columns = np.array([1, 4, 0])
             paired = A[rows, columns]
             binary = np.where(A > 12, 1, 0)
+            where_rows, where_columns = np.where(A > 12)
+            where_coordinates = np.column_stack([where_rows, where_columns])
 
             show("Indexing | source A", A)
             show("Indexing | basic slice A[:2, 1:4]", sliced)
             show("Memory | slice shares memory with A", np.shares_memory(A, sliced))
+            show("Indexing | boolean mask dtype and shape", (mask.dtype, mask.shape))
             show("Indexing | values divisible by three", selected)
             show("Indexing | paired fancy selection A[rows, columns]", paired)
             show("Selection | np.where(A > 12, 1, 0)", binary)
+            show("Selection | coordinates returned by np.where(condition)", where_coordinates)
             """
         ),
         md(
             """
-            ## 4. Broadcasting
+            ## 5. Broadcasting
 
             Align shapes from the right. Adding singleton axes turns pairwise operations into ordinary elementwise arithmetic.
             """
@@ -215,7 +272,7 @@ def build_numpy() -> None:
             show("Broadcast | pairwise squared distances (n x k)", squared_distances)
             """
         ),
-        md("## 5. Reductions and standardization"),
+        md("## 6. Reductions and standardization"),
         code(
             """
             X = rng.normal(loc=100, scale=10, size=(6, 3))
@@ -229,7 +286,7 @@ def build_numpy() -> None:
             show("Standardization | feature std after transform", standardized.std(axis=0))
             """
         ),
-        md("## 6. Sorting, top-k, and aligned gather"),
+        md("## 7. Sorting, top-k, and aligned gather"),
         code(
             """
             scores = rng.normal(size=(3, 8))
@@ -245,7 +302,7 @@ def build_numpy() -> None:
             show("Top-k | aligned sorted scores", topk_scores)
             """
         ),
-        md("## 7. Linear algebra: solve, norms, and SVD"),
+        md("## 8. Linear algebra: solve, norms, and SVD"),
         code(
             """
             A = rng.normal(size=(4, 4))
@@ -259,7 +316,7 @@ def build_numpy() -> None:
             show("Linear algebra | compact SVD shapes", (U.shape, singular_values.shape, Vt.shape))
             """
         ),
-        md("## 8. Stable softmax and cosine similarity"),
+        md("## 9. Stable softmax and cosine similarity"),
         code(
             """
             def softmax(logits):
@@ -283,7 +340,7 @@ def build_numpy() -> None:
             show("Cosine similarity | first 2 x 3 block", cosine[:2, :3])
             """
         ),
-        md("## 9. Scatter-add, sliding windows, and NaN-aware reduction"),
+        md("## 10. Scatter-add, sliding windows, and NaN-aware reduction"),
         code(
             """
             repeated_indices = np.array([0, 1, 1, 3, 3, 3])
@@ -305,9 +362,9 @@ def build_numpy() -> None:
         ),
         md(
             """
-            ## 10. Retrieval drills
+            ## 11. Retrieval drills
 
-            Re-type these from a blank cell later: standardization, pairwise distances, stable softmax, and vectorized binary metrics.
+            Re-type these from a blank cell later: concatenate versus stack, standardization, pairwise distances, stable softmax, and vectorized binary metrics.
             """
         ),
         code(
@@ -324,6 +381,9 @@ def build_numpy() -> None:
             assert np.allclose(probabilities.sum(axis=1), 1.0)
             assert topk_indices.shape == (3, 3)
             assert squared_distances.shape == (5, 3)
+            assert concatenated_rows.shape == (4, 3)
+            assert stacked_front.shape == (2, 2, 3)
+            assert sum(part.size for part in uneven_chunks) == 7
             show("Binary metrics | precision, recall, F1", np.round([precision, recall, f1], 3))
             show("Drill checks | status", "all assertions passed")
             """
@@ -338,19 +398,17 @@ def build_pandas() -> None:
     cells = [
         contract(
             "pandas Interview Refresher",
-            study_time="35-45 minutes",
+            study_time="40-50 minutes",
             prerequisites="NumPy arrays and basic SQL-style grouping",
             mode="quick",
             data_policy="no external files or downloads; a deterministic event table is created in memory",
             provenance="rebuilt from the curated pandas interview recap notebook",
-            goal="Practice selection, groupby, windows, reshaping, joins, strings, and dates with traceable outputs.",
+            goal="Practice selection, missing-data repair, combination, groupby, windows, reshaping, joins, strings, and dates with traceable outputs.",
         ),
         code(
             """
             import numpy as np
             import pandas as pd
-
-            rng = np.random.default_rng(7)
 
             def show(label, value):
                 print(f"\\n--- {label} ---\\n{value}")
@@ -373,23 +431,57 @@ def build_pandas() -> None:
                 }
             )
             show("Source | event table", events.to_string(index=False))
+            show("Source | shape and dtypes", (events.shape, events.dtypes.astype(str).to_dict()))
             """
         ),
         md("## 1. `loc`, `iloc`, and safe assignment"),
         code(
             """
             high_value = events.loc[events["revenue"] >= 50, ["event_id", "user_id", "revenue"]]
+            high_value_web = events.loc[
+                (events["revenue"] >= 50) & (events["channel"] == "web"),
+                ["event_id", "channel", "revenue"],
+            ]
             positional = events.iloc[:3, :4]
             labeled = events.copy()
             labeled.loc[labeled["revenue"] >= 50, "value_band"] = "high"
             labeled.loc[labeled["revenue"] < 50, "value_band"] = "regular"
 
             show("Selection | loc revenue >= 50", high_value.to_string(index=False))
+            show("Selection | parenthesized AND mask", high_value_web.to_string(index=False))
             show("Selection | iloc first 3 rows and 4 columns", positional.to_string(index=False))
             show("Assignment | value_band counts", labeled["value_band"].value_counts().to_string())
             """
         ),
-        md("## 2. Sorting, deduplication, and top-k per group"),
+        md(
+            """
+            ## 2. Missing values, dtype repair, and concatenation
+
+            Audit missingness before choosing a policy. Coerce dirty numeric text with `errors="coerce"`, impute features only from training data, and normally drop rather than impute a missing supervised target. Use `concat` to combine compatible tables by rows or columns; use `merge` when matching keys.
+            """
+        ),
+        code(
+            """
+            messy = events.copy()
+            messy.loc[2, "revenue"] = np.nan
+            messy.loc[5, "channel"] = None
+            messy["revenue_text"] = messy["revenue"].astype("string")
+            messy.loc[4, "revenue_text"] = "unknown"
+
+            numeric_revenue = pd.to_numeric(messy["revenue_text"], errors="coerce")
+            cleaned = messy.assign(
+                revenue=numeric_revenue.fillna(numeric_revenue.median()),
+                channel=messy["channel"].fillna("unknown"),
+            )
+            recombined = pd.concat([events.iloc[:5], events.iloc[5:]], ignore_index=True)
+
+            show("Missing data | counts before repair", messy.isna().sum().to_string())
+            show("Dtype repair | coerced invalid numeric values", numeric_revenue.head(6).to_string(index=False))
+            show("Missing data | counts after selected repairs", cleaned.isna().sum().to_string())
+            show("Combine | row-wise concat shape", recombined.shape)
+            """
+        ),
+        md("## 3. Sorting, deduplication, and top-k per group"),
         code(
             """
             latest_per_user = (
@@ -407,7 +499,7 @@ def build_pandas() -> None:
             show("Ranking | top 2 revenue events per user", top_two[["user_id", "event_id", "revenue"]].to_string(index=False))
             """
         ),
-        md("## 3. `agg` reduces rows; `transform` preserves rows"),
+        md("## 4. `agg` reduces rows; `transform` preserves rows"),
         code(
             """
             user_summary = events.groupby("user_id").agg(
@@ -429,7 +521,7 @@ def build_pandas() -> None:
             )
             """
         ),
-        md("## 4. Time ordering, shift, gaps, and lagged rolling features"),
+        md("## 5. Time ordering, shift, gaps, and lagged rolling features"),
         code(
             """
             ordered = events.sort_values(["user_id", "timestamp", "event_id"]).copy()
@@ -452,7 +544,7 @@ def build_pandas() -> None:
             )
             """
         ),
-        md("## 5. Strings and categorical cleanup"),
+        md("## 6. Strings and categorical cleanup"),
         code(
             """
             string_features = events[["event_id", "note", "channel"]].copy()
@@ -463,7 +555,7 @@ def build_pandas() -> None:
             show("Categorical | channel categories", string_features["channel"].cat.categories.tolist())
             """
         ),
-        md("## 6. Pivot, pivot table, and melt"),
+        md("## 7. Pivot, pivot table, and melt"),
         code(
             """
             revenue_matrix = events.pivot_table(
@@ -481,7 +573,7 @@ def build_pandas() -> None:
             show("Reshape | melted long form", long.head(9).to_string(index=False))
             """
         ),
-        md("## 7. Validated joins and unmatched-key checks"),
+        md("## 8. Validated joins and unmatched-key checks"),
         code(
             """
             users = pd.DataFrame(
@@ -497,11 +589,13 @@ def build_pandas() -> None:
             show("Join audit | unmatched event keys", unmatched.to_string(index=False) if len(unmatched) else "none")
             """
         ),
-        md("## 8. Retrieval checks"),
+        md("## 9. Retrieval checks"),
         code(
             """
             assert top_two.groupby("user_id").size().eq(2).all()
             assert joined["event_id"].is_unique
+            assert recombined.equals(events)
+            assert cleaned[["revenue", "channel"]].notna().all().all()
             assert long.shape[0] == len(wide) * len(revenue_matrix.columns)
             assert ordered.groupby("user_id")["timestamp"].apply(lambda values: values.is_monotonic_increasing).all()
 
@@ -682,7 +776,7 @@ def build_linear_models() -> None:
                 return (X_train - mean) / scale, (X_test - mean) / scale
             """
         ),
-        md("## 1. Linear regression: mean squared error gradient descent"),
+        md("## 1. Linear regression: gradient descent with a least-squares reference"),
         code(
             """
             X = rng.normal(size=(500, 3))
@@ -696,9 +790,16 @@ def build_linear_models() -> None:
             test_prediction = linear.predict(X_test_scaled)
             test_mse = np.mean((test_prediction - y_test) ** 2)
 
+            train_design = np.column_stack([X_train_scaled, np.ones(len(X_train_scaled))])
+            test_design = np.column_stack([X_test_scaled, np.ones(len(X_test_scaled))])
+            least_squares_parameters = np.linalg.lstsq(train_design, y_train, rcond=None)[0]
+            least_squares_prediction = test_design @ least_squares_parameters
+            least_squares_mse = np.mean((least_squares_prediction - y_test) ** 2)
+
             show("Linear regression | train/test shapes", (X_train_scaled.shape, X_test_scaled.shape))
             show("Linear regression | learned coefficients in scaled space", linear.coef_)
             show("Linear regression | held-out MSE", test_mse)
+            show("Linear regression | least-squares held-out MSE", least_squares_mse)
             show("Linear regression | first and final objective", (linear.loss_history_[0], linear.loss_history_[-1]))
             """
         ),
@@ -749,6 +850,7 @@ def build_linear_models() -> None:
         code(
             """
             assert test_mse < 0.2
+            assert least_squares_mse < 0.2
             assert accuracy > 0.9
             assert np.mean(prediction == y_test) == 1.0
             assert linear.loss_history_[-1] < linear.loss_history_[0]
@@ -889,6 +991,7 @@ def build_sklearn() -> None:
             import pandas as pd
 
             from sklearn.compose import ColumnTransformer
+            from sklearn.dummy import DummyClassifier, DummyRegressor
             from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
             from sklearn.impute import SimpleImputer
             from sklearn.metrics import classification_report, f1_score, mean_squared_error, r2_score
@@ -982,7 +1085,13 @@ def build_sklearn() -> None:
             show("Preprocessing | feature groups", {"numeric": numeric_features, "nominal": nominal_features, "ordinal": ordinal_features})
             """
         ),
-        md("## 3. Classification pipeline and nested search"),
+        md(
+            """
+            ## 3. Classification: baseline, pipeline, and nested search
+
+            A dummy model verifies that learned signal beats a trivial policy. This synthetic table is IID, so a stratified random split is appropriate; use grouped or chronological splits when rows share entities or time dependence.
+            """
+        ),
         code(
             """
             X_train, X_test, y_train, y_test = train_test_split(
@@ -1013,14 +1122,23 @@ def build_sklearn() -> None:
             )
             classification_search.fit(X_train, y_train)
             class_prediction = classification_search.predict(X_test)
+            classification_baseline = DummyClassifier(strategy="most_frequent").fit(
+                X_train, y_train
+            )
+            baseline_class_prediction = classification_baseline.predict(X_test)
+            baseline_f1 = f1_score(y_test, baseline_class_prediction)
+            classification_f1 = f1_score(y_test, class_prediction)
 
             show("Classification | train/test shapes", (X_train.shape, X_test.shape))
             show("Classification | best parameters", classification_search.best_params_)
-            show("Classification | held-out F1", f1_score(y_test, class_prediction))
+            show(
+                "Classification | baseline versus tuned held-out F1",
+                {"dummy_most_frequent": baseline_f1, "random_forest": classification_f1},
+            )
             show("Classification | held-out report", classification_report(y_test, class_prediction, digits=3, zero_division=0))
             """
         ),
-        md("## 4. Regression pipeline using the same preprocessing contract"),
+        md("## 4. Regression: baseline and pipeline using the same preprocessing contract"),
         code(
             """
             X_train_reg, X_test_reg, y_train_reg, y_test_reg = train_test_split(
@@ -1051,9 +1169,17 @@ def build_sklearn() -> None:
             regression_search.fit(X_train_reg, y_train_reg)
             regression_prediction = regression_search.predict(X_test_reg)
             rmse = np.sqrt(mean_squared_error(y_test_reg, regression_prediction))
+            regression_baseline = DummyRegressor(strategy="mean").fit(X_train_reg, y_train_reg)
+            baseline_regression_prediction = regression_baseline.predict(X_test_reg)
+            baseline_rmse = np.sqrt(
+                mean_squared_error(y_test_reg, baseline_regression_prediction)
+            )
 
             show("Regression | best parameters", regression_search.best_params_)
-            show("Regression | held-out RMSE", rmse)
+            show(
+                "Regression | baseline versus tuned held-out RMSE",
+                {"dummy_mean": baseline_rmse, "random_forest": rmse},
+            )
             show("Regression | held-out R2", r2_score(y_test_reg, regression_prediction))
             """
         ),
@@ -1076,6 +1202,8 @@ def build_sklearn() -> None:
             assert len(regression_prediction) == len(X_test_reg)
             assert transformed_sample.shape[0] == 3
             assert np.isfinite(rmse)
+            assert classification_f1 > baseline_f1
+            assert rmse < baseline_rmse
 
             show("Pipeline checks | status", "all shape and held-out-evaluation assertions passed")
             """
@@ -1093,7 +1221,7 @@ def build_pytorch_fundamentals() -> None:
             mode="optional",
             data_policy="no downloads; seeded synthetic tensors only; any checkpoint path resolves outside the vault",
             provenance="consolidated from the legacy PyTorch introduction and training-loop drills",
-            goal="Practice tensors, autograd, Dataset/DataLoader, nn.Module, correct train/eval modes, and loss aggregation.",
+            goal="Practice tensor construction and reshaping, NumPy interchange, autograd, Dataset/DataLoader, nn.Module, correct train/eval modes, and loss aggregation.",
         ),
         project_setup_cell(),
         code(
@@ -1120,16 +1248,39 @@ def build_pytorch_fundamentals() -> None:
             show("Environment | selected device", device)
             """
         ),
-        md("## 1. Tensor shape, dtype, device, and broadcasting"),
+        md(
+            """
+            ## 1. Tensor construction, shape operations, and combining
+
+            `torch.cat` joins an existing dimension; `torch.stack` creates a new one. `from_numpy` shares CPU memory with its NumPy input, while `torch.tensor` copies. Before converting a model result to NumPy, use `detach().cpu().numpy()`.
+            """
+        ),
         code(
             """
             X = torch.arange(12, dtype=torch.float32).reshape(3, 4)
             bias = torch.tensor([1.0, 2.0, 3.0, 4.0])
             shifted = X + bias
+            expanded = X.unsqueeze(0)            # (1, 3, 4)
+            permuted = expanded.permute(0, 2, 1) # (1, 4, 3)
+            concatenated = torch.cat([X, X], dim=0) # (6, 4)
+            stacked = torch.stack([X, X], dim=0)    # (2, 3, 4)
+
+            numpy_source = np.arange(6, dtype=np.float32).reshape(2, 3)
+            shared_tensor = torch.from_numpy(numpy_source)
+            copied_tensor = torch.tensor(numpy_source)
+            numpy_source[0, 0] = -1.0
+            detached_numpy = shifted.detach().cpu().numpy()
 
             show("Tensor | X shape/dtype/device", (tuple(X.shape), X.dtype, X.device))
             show("Broadcast | X + bias shape", tuple(shifted.shape))
             show("Broadcast | shifted values", shifted)
+            show("Shape | unsqueeze then permute", (tuple(expanded.shape), tuple(permuted.shape)))
+            show("Combine | cat existing dim versus stack new dim", (tuple(concatenated.shape), tuple(stacked.shape)))
+            show(
+                "NumPy boundary | from_numpy shares, tensor copies",
+                (shared_tensor[0, 0].item(), copied_tensor[0, 0].item()),
+            )
+            show("NumPy boundary | detached CPU array shape", detached_numpy.shape)
             """
         ),
         md("## 2. Autograd and gradient accumulation"),
@@ -1236,6 +1387,9 @@ def build_pytorch_fundamentals() -> None:
             restored.load_state_dict(torch.load(checkpoint_path, map_location=device, weights_only=True))
             restored_loss = evaluate(restored, validation_loader, loss_fn)
 
+            assert concatenated.shape == (6, 4)
+            assert stacked.shape == (2, 3, 4)
+            assert accumulated_gradient == 2 * first_gradient
             show("Checkpoint | external path", checkpoint_path)
             show("Checkpoint | restored validation MSE", restored_loss)
             show("Training checks | status", "model modes, no-grad evaluation, and external state_dict verified")
@@ -1410,9 +1564,27 @@ def build_image_classification() -> None:
 
             inference = pd.DataFrame(rows)
             test_accuracy = (inference["target"] == inference["prediction"]).mean()
+            confusion = pd.crosstab(inference["target"], inference["prediction"]).reindex(
+                index=dataset.classes,
+                columns=dataset.classes,
+                fill_value=0,
+            )
+            per_class_recall = pd.Series(
+                np.diag(confusion) / confusion.sum(axis=1),
+                index=dataset.classes,
+                name="recall",
+            )
+
+            assert confusion.to_numpy().sum() == len(inference)
+            assert per_class_recall.between(0, 1).all()
             show("Inference | first five filename-keyed predictions", inference.head().to_string(index=False))
             show("Inference | test accuracy", test_accuracy)
-            show("Image checks | status", "NCHW, logits, model modes, and identifier mapping verified")
+            show("Inference | confusion matrix", confusion.to_string())
+            show("Inference | per-class recall", per_class_recall.round(3).to_string())
+            show(
+                "Image checks | status",
+                "NCHW, logits, model modes, class-level metrics, and identifier mapping verified",
+            )
             """
         ),
     ]

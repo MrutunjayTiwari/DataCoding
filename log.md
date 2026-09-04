@@ -7,6 +7,13 @@ updated: 2026-08-30
 
 # Activity Log
 
+## [2026-09-04] audit | Notebook fundamentals
+
+- Audited all eleven notebooks against compact, interview-oriented must-have checklists and recorded decisions in [[sources/notebook-fundamentals-audit|Notebook fundamentals audit]].
+- Added array combining/splitting and cleaned the pulled singleton-axis/`where` additions in the NumPy refresher while preserving their teaching intent.
+- Added pandas missing-data/dtype repair and row concatenation, a linear least-squares reference, sklearn dummy baselines, PyTorch tensor-shape/interchange patterns, and image-classification confusion/per-class metrics.
+- Deliberately avoided new notebooks, API catalogs, model/plot galleries, duplicated PCA/SQL material, and context-dependent advanced workflows.
+
 ## [2026-08-30] ingest | Atlassian ML coding guidance
 
 - Reviewed the diarized recruiter conversation as a single immutable source and separated confirmed round guidance from candidate assumptions.

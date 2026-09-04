@@ -2,7 +2,7 @@
 type: map
 status: active
 tags: [learning-path, curriculum, ml]
-updated: 2026-08-30
+updated: 2026-09-04
 ---
 
 # Learning Path
@@ -11,11 +11,11 @@ Move from array mechanics to complete ML systems without skipping the contracts 
 
 ## Stage 1 - Numerical Python
 
-1. [[wiki/foundations/numpy|NumPy]]: predict shapes before running code; practice broadcasting, boolean masks, reductions, and vectorized distance calculations.
-2. [[wiki/foundations/pandas|pandas]]: select, group, reshape, join, and build time-aware features without leakage.
+1. [[wiki/foundations/numpy|NumPy]]: predict shapes before running code; practice combining, broadcasting, boolean masks, reductions, and vectorized distance calculations.
+2. [[wiki/foundations/pandas|pandas]]: repair dtypes/missingness, select, combine, group, reshape, join, and build time-aware features without leakage.
 3. [[wiki/foundations/python-oop|Python OOP for ML]]: understand constructor parameters, learned attributes, `fit`, `predict`, composition, and tests.
 
-**Exit check:** implement standardization, pairwise squared distances, and a groupwise top-k query without looking up syntax.
+**Exit check:** explain `concatenate` versus `stack`, then implement standardization, pairwise squared distances, missing-value repair, and a groupwise top-k query without looking up syntax.
 
 ## Stage 2 - Algorithms from scratch
 
@@ -37,7 +37,7 @@ Follow [[wiki/algorithms/from-scratch|the from-scratch map]] in this order:
 - [[wiki/workflows/visualization|Seaborn and interview EDA]] for question-driven plots.
 - [[wiki/workflows/sql-interviews|SQL patterns]] for analytical data extraction.
 
-**Exit check:** build one `ColumnTransformer` pipeline and explain why all learned preprocessing must be inside cross-validation.
+**Exit check:** beat a dummy baseline with one `ColumnTransformer` pipeline and explain why all learned preprocessing must be inside cross-validation.
 
 ## Stage 4 - PyTorch
 

@@ -2,12 +2,20 @@
 type: workflow
 status: active
 tags: [pytorch, training-loop, autograd]
-updated: 2026-08-30
+updated: 2026-09-04
 ---
 
 # PyTorch Training Loop
 
 A correct PyTorch loop manages data batches, device placement, model mode, gradient state, loss normalization, and evaluation explicitly.
+
+## Tensor fundamentals
+
+- `unsqueeze` inserts a size-one dimension; `squeeze` removes only dimensions you intend to remove.
+- `permute` reorders dimensions; it does not copy values merely to reshape them.
+- `torch.cat` joins an existing dimension; `torch.stack` creates a new dimension.
+- `torch.from_numpy(array)` shares CPU memory; `torch.tensor(array)` copies.
+- Convert model results with `tensor.detach().cpu().numpy()` so autograd and device state are handled explicitly.
 
 ## Canonical training phase
 
@@ -49,13 +57,14 @@ If a loss is a batch mean, multiply by batch size before accumulating and divide
 - Evaluation accidentally updates BatchNorm statistics.
 - Target dtype/shape does not match the loss.
 - Calling `.item()` too early detaches a value needed for gradients.
+- Calling `.numpy()` directly on a gradient-tracked or non-CPU tensor.
 - Validation data is shuffled or augmented like training data.
 - Model and tensors reside on different devices.
 - Saving the whole model object couples the checkpoint to code layout; prefer `state_dict`.
 
 ## Interview drill
 
-Write train and evaluation functions from memory, label every tensor shape, and explain why logits—not probabilities—go into common combined losses.
+Predict `cat`/`stack` and `unsqueeze`/`permute` shapes, then write train and evaluation functions from memory and explain why logits—not probabilities—go into common combined losses.
 
 Executable reference: [PyTorch fundamentals](../../notebooks/04-pytorch/01_pytorch_fundamentals.ipynb).
 

@@ -2,7 +2,7 @@
 type: workflow
 status: active
 tags: [computer-vision, image-classification, pytorch]
-updated: 2026-08-30
+updated: 2026-09-04
 ---
 
 # Image Classification
@@ -31,6 +31,10 @@ Training transforms may include random crop/flip/color changes. Validation/test 
 4. Pretrained backbone with a replaced classifier head.
 5. Fine-tune more layers only when data and compute justify it.
 
+## Evaluation contract
+
+Use validation data for model choices and touch the test set once. Report aggregate loss/accuracy together with a confusion matrix and per-class recall when class behavior matters. Keep predictions keyed by stable filenames or IDs so errors can be inspected and joined back to source records.
+
 ## Failure modes
 
 - Train and validation contain near-duplicate images.
@@ -42,7 +46,7 @@ Training transforms may include random crop/flip/color changes. Validation/test 
 
 ## Interview drill
 
-Implement a `Dataset`, inspect one batch and its min/max/dtype, define a small CNN, write train/eval loops, and emit an inference table keyed by filename.
+Implement a `Dataset`, inspect one batch and its min/max/dtype, define a small CNN, write train/eval loops, and emit filename-keyed predictions with a confusion matrix and per-class recall.
 
 Executable reference: [Image classification pattern](../../notebooks/04-pytorch/02_image_classification.ipynb). It uses generated tensors and writes no images into the vault.
 

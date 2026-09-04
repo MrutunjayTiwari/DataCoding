@@ -2,7 +2,7 @@
 type: concept
 status: active
 tags: [numpy, arrays, vectorization]
-updated: 2026-08-30
+updated: 2026-09-04
 ---
 
 # NumPy
@@ -29,6 +29,15 @@ Align dimensions from the right. Dimensions are compatible when equal or when on
 mu = X.mean(axis=0, keepdims=True)  # (1, d)
 X_centered = X - mu  # (n, d)
 ```
+
+### Combining and splitting
+
+- `np.concatenate([a, b], axis=k)` extends an existing axis; all other dimensions must match.
+- `np.stack([a, b], axis=k)` inserts a new axis; every input shape must match.
+- `vstack` and `hstack` are conveniences, but their 1-D behavior is easier to misread than an explicit `concatenate` axis.
+- `split` requires equal division at the requested boundaries; `array_split` permits uneven chunks.
+
+Predict the output shape before choosing the operation. For two `(2, 3)` arrays, concatenating on axis `0` gives `(4, 3)`, while stacking on axis `0` gives `(2, 2, 3)`.
 
 ### Pairwise squared distances
 
@@ -57,6 +66,8 @@ Basic slices commonly share memory; fancy/boolean indexing produces copies. `rav
 ## Failure modes
 
 - A `(n,)` vector unexpectedly broadcasts across columns or rows.
+- `stack` is used when an existing axis should grow, silently adding an unwanted dimension.
+- `concatenate` fails because a non-joining dimension differs.
 - Reducing the wrong axis yields plausible but incorrect values.
 - Repeated fancy indices do not accumulate with `out[idx] += values`; use `np.add.at` or an aggregation primitive.
 - Integer dtype truncates a floating-point update.
@@ -64,7 +75,7 @@ Basic slices commonly share memory; fancy/boolean indexing produces copies. `rav
 
 ## Interview drill
 
-Implement stable softmax, top-k sorted indices, pairwise distances, precision/recall/F1, and one K-means update without Python loops over samples.
+Predict `concatenate`/`stack` shapes, then implement stable softmax, top-k sorted indices, pairwise distances, precision/recall/F1, and one K-means update without Python loops over samples.
 
 Executable reference: [NumPy interview refresher](../../notebooks/01-foundations/01_numpy_interview_refresher.ipynb).
 

@@ -75,6 +75,8 @@ Code-cell rules:
 - Clear outputs from downloads, training-heavy sections, AutoML, large tables, and plots before committing.
 - Never embed raw datasets, model weights, caches, secrets, identity documents, or transaction data.
 
+Use [[sources/notebook-fundamentals-audit|the notebook fundamentals audit]] as the compact coverage baseline. Add a concept once at the lowest appropriate layer and prefer a retrieval-worthy pattern over an API catalog.
+
 ## Ingest workflow
 
 Process sources one at a time unless the user explicitly requests a batch:

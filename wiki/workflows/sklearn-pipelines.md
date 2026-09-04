@@ -2,7 +2,7 @@
 type: workflow
 status: active
 tags: [sklearn, pipelines, preprocessing, cross-validation]
-updated: 2026-08-30
+updated: 2026-09-04
 ---
 
 # scikit-learn Pipelines
@@ -16,12 +16,13 @@ Every step before the final estimator implements `fit` plus `transform`; the fin
 ## Core workflow
 
 1. Split rows before learning preprocessing statistics.
-2. Identify numeric, nominal categorical, and genuinely ordinal columns.
-3. Build small pipelines per column type.
-4. Combine them with `ColumnTransformer`.
-5. Add the estimator as the final `Pipeline` step.
-6. Search nested parameters using `step__parameter` names.
-7. Fit search on training data and evaluate once on untouched test data.
+2. Fit a `DummyClassifier` or `DummyRegressor` baseline on the same split and metric.
+3. Identify numeric, nominal categorical, and genuinely ordinal columns.
+4. Build small pipelines per column type.
+5. Combine them with `ColumnTransformer`.
+6. Add the estimator as the final `Pipeline` step.
+7. Search nested parameters using `step__parameter` names.
+8. Fit search on training data and evaluate once on untouched test data.
 
 ```python
 pipeline = Pipeline(
@@ -44,12 +45,13 @@ pipeline = Pipeline(
 - Passing ordinal values through a nominal encoder, or inventing order for nominal values.
 - Tuning on the held-out test set.
 - Using accuracy by habit on imbalanced data.
+- Reporting a tuned model without showing that it beats a trivial baseline.
 - Unknown categories crash inference because encoder behavior was not specified.
 - A tiny dataset uses more cross-validation folds than the minority class supports.
 
 ## Interview drill
 
-Build a mixed-type classification and regression pipeline, inspect `get_params()` names, run a small randomized search, and explain exactly where leakage would occur if preprocessing sat outside the pipeline.
+Build dummy baselines plus mixed-type classification and regression pipelines, inspect `get_params()` names, run a small randomized search, and explain exactly where leakage would occur if preprocessing sat outside the pipeline.
 
 Executable reference: [Tabular pipelines](../../notebooks/03-sklearn/01_tabular_pipelines.ipynb).
 
