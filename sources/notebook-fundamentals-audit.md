@@ -38,6 +38,10 @@ This audit checks whether each notebook teaches the small set of operations a le
 
 The audit adds no new teaching notebook. It strengthens six existing notebooks in place, preserving the layered design: concepts in the wiki, reusable algorithms in `src/`, and short executable drills in notebooks.
 
+## Revision annotation standard
+
+All eleven notebooks use selective code comments as retrieval cues. A comment earns space when it explains intent, an important shape or alignment change, an invariant, numerical stability, leakage control, or behavior that is easy to misremember. Comments use parameterized language such as “keep `k` candidates” rather than example-specific wording such as “keep two.” Obvious imports, assignments, and syntax remain uncommented; longer conceptual explanations stay in the preceding Markdown cell, and runtime evidence stays in labeled output.
+
 ## Connections
 
 [[index|Home]] · [[maps/learning-path|Learning path]] · [[maps/interview-revision|Interview revision]] · [[sources/legacy-coding-audit|Legacy source audit]]

@@ -55,6 +55,7 @@ def contract(
         - **Provenance:** {provenance}
 
         Output convention: every retained textual result begins with a label that identifies the operation that produced it.
+        Annotation convention: comments explain intent, shape changes, invariants, or subtle API behavior; obvious Python syntax is left uncommented.
         """
     )
 
@@ -102,13 +103,13 @@ def project_setup_cell() -> dict:
             start = Path.cwd() if start is None else Path(start)
             for candidate in (start, *start.parents):
                 if (candidate / "pyproject.toml").exists():
-                    return candidate
+                    return candidate  # Anchor imports to the repository, not the launch directory.
             raise RuntimeError("Run this notebook from inside the DataCoding project")
 
         PROJECT_ROOT = find_project_root()
         source_dir = str(PROJECT_ROOT / "src")
         if source_dir not in sys.path:
-            sys.path.insert(0, source_dir)
+            sys.path.insert(0, source_dir)  # Prefer this checkout's reusable implementations.
         """
     )
 
@@ -169,12 +170,12 @@ def build_numpy() -> None:
             """
             base = np.arange(12)
             reshaped = base.reshape(3, 4)
-            raveled = reshaped.ravel()
-            flattened = reshaped.flatten()
-            transposed = reshaped.T
-            expanded_front = reshaped[None, :, :]       # (1, 3, 4)
-            expanded_last = np.expand_dims(reshaped, -1)  # (3, 4, 1)
-            squeezed = np.squeeze(expanded_last, axis=-1) # (3, 4)
+            raveled = reshaped.ravel()       # View when memory layout permits.
+            flattened = reshaped.flatten()  # Independent copy.
+            transposed = reshaped.T          # Axis swap; usually a view.
+            expanded_front = reshaped[None, :, :]         # Insert batch axis: (1, 3, 4).
+            expanded_last = np.expand_dims(reshaped, -1)  # Insert trailing axis: (3, 4, 1).
+            squeezed = np.squeeze(expanded_last, axis=-1) # Remove only the named size-1 axis.
 
             show("Shape | base -> reshaped", f"{base.shape} -> {reshaped.shape}")
             show("Memory | ravel shares memory", np.shares_memory(reshaped, raveled))
@@ -198,12 +199,12 @@ def build_numpy() -> None:
             left = np.arange(6).reshape(2, 3)
             right = left + 10
 
-            concatenated_rows = np.concatenate([left, right], axis=0)    # (4, 3)
-            concatenated_columns = np.concatenate([left, right], axis=1) # (2, 6)
-            stacked_front = np.stack([left, right], axis=0)              # (2, 2, 3)
-            stacked_last = np.stack([left, right], axis=-1)              # (2, 3, 2)
-            equal_halves = np.split(concatenated_rows, 2, axis=0)
-            uneven_chunks = np.array_split(np.arange(7), 3)
+            concatenated_rows = np.concatenate([left, right], axis=0)     # Extend existing row axis: (4, 3).
+            concatenated_columns = np.concatenate([left, right], axis=1)  # Extend existing column axis: (2, 6).
+            stacked_front = np.stack([left, right], axis=0)               # Create new leading axis: (2, 2, 3).
+            stacked_last = np.stack([left, right], axis=-1)               # Create new trailing axis: (2, 3, 2).
+            equal_halves = np.split(concatenated_rows, 2, axis=0)         # Requires an exact division.
+            uneven_chunks = np.array_split(np.arange(7), 3)               # Allows chunk sizes to differ by one.
 
             show("Combine | input shapes", (left.shape, right.shape))
             show(
@@ -231,15 +232,15 @@ def build_numpy() -> None:
         code(
             """
             A = np.arange(20).reshape(4, 5)
-            sliced = A[:2, 1:4]
+            sliced = A[:2, 1:4]  # Basic slicing preserves a view into A.
             mask = A % 3 == 0
-            selected = A[mask]
+            selected = A[mask]  # Boolean indexing returns a compact 1-D copy.
             rows = np.array([0, 2, 3])
             columns = np.array([1, 4, 0])
-            paired = A[rows, columns]
+            paired = A[rows, columns]  # Pair coordinates elementwise, not as a Cartesian product.
             binary = np.where(A > 12, 1, 0)
             where_rows, where_columns = np.where(A > 12)
-            where_coordinates = np.column_stack([where_rows, where_columns])
+            where_coordinates = np.column_stack([where_rows, where_columns])  # Shape: (n_matches, 2).
 
             show("Indexing | source A", A)
             show("Indexing | basic slice A[:2, 1:4]", sliced)
@@ -262,10 +263,10 @@ def build_numpy() -> None:
             """
             X = rng.normal(size=(5, 2))       # (n=5, d=2)
             centers = rng.normal(size=(3, 2)) # (k=3, d=2)
-            mean = X.mean(axis=0, keepdims=True)
+            mean = X.mean(axis=0, keepdims=True)  # Keep (1, d) for explicit row-wise broadcasting.
             centered = X - mean
-            differences = X[:, None, :] - centers[None, :, :]  # (5, 3, 2)
-            squared_distances = np.sum(differences**2, axis=2) # (5, 3)
+            differences = X[:, None, :] - centers[None, :, :]  # All sample-center pairs: (n, k, d).
+            squared_distances = np.sum(differences**2, axis=2)  # Reduce features: (n, k).
 
             show("Broadcast | X, mean, centered shapes", (X.shape, mean.shape, centered.shape))
             show("Broadcast | pairwise difference shape", differences.shape)
@@ -276,7 +277,7 @@ def build_numpy() -> None:
         code(
             """
             X = rng.normal(loc=100, scale=10, size=(6, 3))
-            feature_mean = X.mean(axis=0, keepdims=True)
+            feature_mean = X.mean(axis=0, keepdims=True)  # One statistic per feature.
             feature_std = X.std(axis=0, keepdims=True)
             standardized = (X - feature_mean) / (feature_std + 1e-12)
 
@@ -291,11 +292,11 @@ def build_numpy() -> None:
             """
             scores = rng.normal(size=(3, 8))
             k = 3
-            candidate_indices = np.argpartition(-scores, kth=k - 1, axis=1)[:, :k]
-            candidate_scores = np.take_along_axis(scores, candidate_indices, axis=1)
-            candidate_order = np.argsort(-candidate_scores, axis=1)
-            topk_indices = np.take_along_axis(candidate_indices, candidate_order, axis=1)
-            topk_scores = np.take_along_axis(scores, topk_indices, axis=1)
+            candidate_indices = np.argpartition(-scores, kth=k - 1, axis=1)[:, :k]  # Keep k largest candidates per row; order is arbitrary.
+            candidate_scores = np.take_along_axis(scores, candidate_indices, axis=1)  # Gather aligned values: (n_rows, k).
+            candidate_order = np.argsort(-candidate_scores, axis=1)  # Sort only the k candidates, not every full row.
+            topk_indices = np.take_along_axis(candidate_indices, candidate_order, axis=1)  # Restore original column positions.
+            topk_scores = np.take_along_axis(scores, topk_indices, axis=1)  # Scores stay aligned with topk_indices.
 
             show("Top-k | source scores", scores)
             show("Top-k | sorted indices per row", topk_indices)
@@ -307,9 +308,9 @@ def build_numpy() -> None:
             """
             A = rng.normal(size=(4, 4))
             b = rng.normal(size=4)
-            solution = np.linalg.solve(A, b)
-            residual = A @ solution - b
-            U, singular_values, Vt = np.linalg.svd(A, full_matrices=False)
+            solution = np.linalg.solve(A, b)  # Solve Ax=b directly; avoid forming A^{-1}.
+            residual = A @ solution - b       # Numerical correctness check.
+            U, singular_values, Vt = np.linalg.svd(A, full_matrices=False)  # Compact factors preserve reconstruction.
 
             show("Linear algebra | solve residual max abs", np.max(np.abs(residual)))
             show("Linear algebra | row L2 norms", np.linalg.norm(A, axis=1))
@@ -321,7 +322,7 @@ def build_numpy() -> None:
             """
             def softmax(logits):
                 logits = np.asarray(logits, dtype=float)
-                shifted = logits - logits.max(axis=1, keepdims=True)
+                shifted = logits - logits.max(axis=1, keepdims=True)  # Stabilize exp without changing probabilities.
                 exponentials = np.exp(shifted)
                 return exponentials / exponentials.sum(axis=1, keepdims=True)
 
@@ -330,9 +331,9 @@ def build_numpy() -> None:
 
             left = rng.normal(size=(4, 3))
             right = rng.normal(size=(5, 3))
-            left_unit = left / (np.linalg.norm(left, axis=1, keepdims=True) + 1e-12)
+            left_unit = left / (np.linalg.norm(left, axis=1, keepdims=True) + 1e-12)   # Normalize each row.
             right_unit = right / (np.linalg.norm(right, axis=1, keepdims=True) + 1e-12)
-            cosine = left_unit @ right_unit.T
+            cosine = left_unit @ right_unit.T  # All pairwise cosine similarities: (4, 5).
 
             show("Softmax | probabilities", probabilities)
             show("Softmax | row sums", probabilities.sum(axis=1))
@@ -346,12 +347,12 @@ def build_numpy() -> None:
             repeated_indices = np.array([0, 1, 1, 3, 3, 3])
             values = np.array([10, 1, 1, 5, 2, 2])
             accumulated = np.zeros(5, dtype=int)
-            np.add.at(accumulated, repeated_indices, values)
+            np.add.at(accumulated, repeated_indices, values)  # Accumulate repeated positions instead of overwriting.
 
             from numpy.lib.stride_tricks import sliding_window_view
 
             sequence = np.arange(10)
-            windows = sliding_window_view(sequence, window_shape=4)
+            windows = sliding_window_view(sequence, window_shape=4)  # Overlapping view; no window copies.
             values_with_nan = np.array([1.0, np.nan, 3.0, np.nan, 5.0])
 
             show("Scatter-add | accumulated repeated indices", accumulated)
@@ -439,11 +440,11 @@ def build_pandas() -> None:
             """
             high_value = events.loc[events["revenue"] >= 50, ["event_id", "user_id", "revenue"]]
             high_value_web = events.loc[
-                (events["revenue"] >= 50) & (events["channel"] == "web"),
+                (events["revenue"] >= 50) & (events["channel"] == "web"),  # Parenthesize each mask around & / |.
                 ["event_id", "channel", "revenue"],
             ]
             positional = events.iloc[:3, :4]
-            labeled = events.copy()
+            labeled = events.copy()  # Make ownership explicit before adding a column.
             labeled.loc[labeled["revenue"] >= 50, "value_band"] = "high"
             labeled.loc[labeled["revenue"] < 50, "value_band"] = "regular"
 
@@ -468,12 +469,12 @@ def build_pandas() -> None:
             messy["revenue_text"] = messy["revenue"].astype("string")
             messy.loc[4, "revenue_text"] = "unknown"
 
-            numeric_revenue = pd.to_numeric(messy["revenue_text"], errors="coerce")
+            numeric_revenue = pd.to_numeric(messy["revenue_text"], errors="coerce")  # Invalid text becomes NaN for audit/repair.
             cleaned = messy.assign(
                 revenue=numeric_revenue.fillna(numeric_revenue.median()),
                 channel=messy["channel"].fillna("unknown"),
             )
-            recombined = pd.concat([events.iloc[:5], events.iloc[5:]], ignore_index=True)
+            recombined = pd.concat([events.iloc[:5], events.iloc[5:]], ignore_index=True)  # Stack rows and rebuild a clean index.
 
             show("Missing data | counts before repair", messy.isna().sum().to_string())
             show("Dtype repair | coerced invalid numeric values", numeric_revenue.head(6).to_string(index=False))
@@ -485,12 +486,12 @@ def build_pandas() -> None:
         code(
             """
             latest_per_user = (
-                events.sort_values(["user_id", "timestamp", "event_id"])
-                .drop_duplicates("user_id", keep="last")
+                events.sort_values(["user_id", "timestamp", "event_id"])  # event_id resolves timestamp ties deterministically.
+                .drop_duplicates("user_id", keep="last")                  # Sorted last row is the latest per user.
                 .sort_values("user_id")
             )
             top_two = (
-                events.sort_values(["user_id", "revenue"], ascending=[True, False])
+                events.sort_values(["user_id", "revenue"], ascending=[True, False])  # Put each group's winners first.
                 .groupby("user_id", group_keys=False)
                 .head(2)
             )
@@ -502,13 +503,13 @@ def build_pandas() -> None:
         md("## 4. `agg` reduces rows; `transform` preserves rows"),
         code(
             """
-            user_summary = events.groupby("user_id").agg(
+            user_summary = events.groupby("user_id").agg(  # Collapse to one row per user.
                 event_count=("event_id", "size"),
                 total_revenue=("revenue", "sum"),
                 mean_revenue=("revenue", "mean"),
             )
             with_group_features = events.assign(
-                user_mean_revenue=events.groupby("user_id")["revenue"].transform("mean")
+                user_mean_revenue=events.groupby("user_id")["revenue"].transform("mean")  # Broadcast one group statistic back to every event.
             )
             with_group_features["above_user_mean"] = (
                 with_group_features["revenue"] > with_group_features["user_mean_revenue"]
@@ -524,17 +525,17 @@ def build_pandas() -> None:
         md("## 5. Time ordering, shift, gaps, and lagged rolling features"),
         code(
             """
-            ordered = events.sort_values(["user_id", "timestamp", "event_id"]).copy()
-            ordered["previous_timestamp"] = ordered.groupby("user_id")["timestamp"].shift(1)
+            ordered = events.sort_values(["user_id", "timestamp", "event_id"]).copy()  # Temporal operations require explicit order.
+            ordered["previous_timestamp"] = ordered.groupby("user_id")["timestamp"].shift(1)  # Never cross user boundaries.
             ordered["gap_hours"] = (
                 ordered["timestamp"] - ordered["previous_timestamp"]
             ).dt.total_seconds() / 3600
-            ordered["previous_revenue"] = ordered.groupby("user_id")["revenue"].shift(1)
+            ordered["previous_revenue"] = ordered.groupby("user_id")["revenue"].shift(1)  # Lag before rolling to exclude the current event.
             ordered["prior_two_mean"] = (
                 ordered.groupby("user_id")["previous_revenue"]
                 .rolling(2, min_periods=1)
                 .mean()
-                .reset_index(level=0, drop=True)
+                .reset_index(level=0, drop=True)  # Remove the group level so values align to ordered's index.
             )
             ordered["month"] = ordered["timestamp"].dt.to_period("M")
 
@@ -548,8 +549,8 @@ def build_pandas() -> None:
         code(
             """
             string_features = events[["event_id", "note", "channel"]].copy()
-            string_features["order_id"] = string_features["note"].str.extract(r"(ORD-\\d+)")
-            string_features["channel"] = string_features["channel"].astype("category")
+            string_features["order_id"] = string_features["note"].str.extract(r"(ORD-\\d+)")  # The capture group becomes the new column.
+            string_features["channel"] = string_features["channel"].astype("category")  # Record a small, fixed vocabulary.
 
             show("Strings | extracted order identifiers", string_features.head(6).to_string(index=False))
             show("Categorical | channel categories", string_features["channel"].cat.categories.tolist())
@@ -558,7 +559,7 @@ def build_pandas() -> None:
         md("## 7. Pivot, pivot table, and melt"),
         code(
             """
-            revenue_matrix = events.pivot_table(
+            revenue_matrix = events.pivot_table(  # Aggregate duplicate user/channel pairs while widening.
                 index="user_id",
                 columns="channel",
                 values="revenue",
@@ -567,7 +568,7 @@ def build_pandas() -> None:
             )
             revenue_matrix.columns = [f"revenue_{column}" for column in revenue_matrix.columns]
             wide = revenue_matrix.reset_index()
-            long = wide.melt(id_vars="user_id", var_name="metric", value_name="value")
+            long = wide.melt(id_vars="user_id", var_name="metric", value_name="value")  # Return metric columns to tidy rows.
 
             show("Reshape | revenue pivot table", wide.to_string(index=False))
             show("Reshape | melted long form", long.head(9).to_string(index=False))
@@ -582,7 +583,13 @@ def build_pandas() -> None:
                     "segment": ["growth", "core", "growth", "new"],
                 }
             )
-            joined = events.merge(users, on="user_id", how="left", validate="many_to_one", indicator=True)
+            joined = events.merge(
+                users,
+                on="user_id",
+                how="left",
+                validate="many_to_one",  # Fail if the supposed lookup table would multiply event rows.
+                indicator=True,           # Retain row-level match provenance for the join audit.
+            )
             unmatched = joined.loc[joined["_merge"] != "both", ["event_id", "user_id", "_merge"]]
 
             show("Join | events enriched with segment", joined.head(8).to_string(index=False))
@@ -648,7 +655,7 @@ def build_oop() -> None:
 
             X = rng.normal(size=(200, 2))
             y = 2.0 * X[:, 0] - 1.5 * X[:, 1] + 0.7
-            model.fit(X, y)
+            model.fit(X, y)  # fit mutates learned attributes ending in an underscore.
 
             learned = {"coef_": model.coef_, "intercept_": model.intercept_, "n_features_in_": model.n_features_in_}
             show("Estimator | learned state after fit", learned)
@@ -663,14 +670,14 @@ def build_oop() -> None:
 
                 def fit(self, X):
                     values = np.asarray(X, dtype=float)
-                    self.mean_ = values.mean(axis=0)
+                    self.mean_ = values.mean(axis=0)  # Learned state: one statistic per feature.
                     self.scale_ = values.std(axis=0) + self.epsilon
-                    return self
+                    return self  # Returning self enables estimator-style chaining.
 
                 def transform(self, X):
                     if not hasattr(self, "mean_"):
                         raise NotFittedError("Standardizer must be fitted before transform")
-                    return (np.asarray(X, dtype=float) - self.mean_) / self.scale_
+                    return (np.asarray(X, dtype=float) - self.mean_) / self.scale_  # Reuse fitted statistics; never refit here.
 
                 def fit_transform(self, X):
                     return self.fit(X).transform(X)
@@ -690,7 +697,7 @@ def build_oop() -> None:
                 estimator: LinearRegressionGD
 
                 def fit(self, X, y):
-                    transformed = self.transformer.fit_transform(X)
+                    transformed = self.transformer.fit_transform(X)  # Fit preprocessing before fitting the estimator.
                     self.estimator.fit(transformed, y)
                     return self
 
@@ -765,13 +772,13 @@ def build_linear_models() -> None:
                 print(f"\\n--- {label} ---\\n{value}")
 
             def split(X, y, test_fraction=0.25):
-                indices = rng.permutation(len(X))
+                indices = rng.permutation(len(X))  # Apply one permutation to keep X and y aligned.
                 cut = int(len(X) * (1 - test_fraction))
                 train_index, test_index = indices[:cut], indices[cut:]
                 return X[train_index], X[test_index], y[train_index], y[test_index]
 
             def standardize_train_test(X_train, X_test):
-                mean = X_train.mean(axis=0)
+                mean = X_train.mean(axis=0)  # Learn preprocessing from training rows only.
                 scale = X_train.std(axis=0) + 1e-12
                 return (X_train - mean) / scale, (X_test - mean) / scale
             """
@@ -781,7 +788,7 @@ def build_linear_models() -> None:
             """
             X = rng.normal(size=(500, 3))
             true_coef = np.array([2.0, -3.0, 0.5])
-            y = X @ true_coef + 1.2 + rng.normal(scale=0.3, size=len(X))
+            y = X @ true_coef + 1.2 + rng.normal(scale=0.3, size=len(X))  # Signal + intercept + irreducible noise.
             X_train, X_test, y_train, y_test = split(X, y)
             X_train_scaled, X_test_scaled = standardize_train_test(X_train, X_test)
 
@@ -790,9 +797,9 @@ def build_linear_models() -> None:
             test_prediction = linear.predict(X_test_scaled)
             test_mse = np.mean((test_prediction - y_test) ** 2)
 
-            train_design = np.column_stack([X_train_scaled, np.ones(len(X_train_scaled))])
+            train_design = np.column_stack([X_train_scaled, np.ones(len(X_train_scaled))])  # Append intercept column.
             test_design = np.column_stack([X_test_scaled, np.ones(len(X_test_scaled))])
-            least_squares_parameters = np.linalg.lstsq(train_design, y_train, rcond=None)[0]
+            least_squares_parameters = np.linalg.lstsq(train_design, y_train, rcond=None)[0]  # Stable reference solution without an inverse.
             least_squares_prediction = test_design @ least_squares_parameters
             least_squares_mse = np.mean((least_squares_prediction - y_test) ** 2)
 
@@ -815,11 +822,11 @@ def build_linear_models() -> None:
 
             logistic = LogisticRegressionGD(learning_rate=0.2, max_iter=3_000, l2=0.001)
             logistic.fit(X_train_scaled, y_train)
-            probabilities = logistic.predict_proba(X_test_scaled)[:, 1]
+            probabilities = logistic.predict_proba(X_test_scaled)[:, 1]  # Positive-class probability.
             prediction = logistic.predict(X_test_scaled)
             accuracy = np.mean(prediction == y_test)
             log_loss = -np.mean(
-                y_test * np.log(np.clip(probabilities, 1e-12, 1.0))
+                y_test * np.log(np.clip(probabilities, 1e-12, 1.0))  # Clip only for numerical safety in log.
                 + (1 - y_test) * np.log(np.clip(1 - probabilities, 1e-12, 1.0))
             )
 
@@ -835,7 +842,7 @@ def build_linear_models() -> None:
             negative = rng.normal(loc=[-2.0, -2.0], scale=0.45, size=(120, 2))
             positive = rng.normal(loc=[2.0, 2.0], scale=0.45, size=(120, 2))
             X = np.vstack([negative, positive])
-            y = np.array([-1] * len(negative) + [1] * len(positive))
+            y = np.array([-1] * len(negative) + [1] * len(positive))  # This perceptron contract uses {-1, +1} labels.
             X_train, X_test, y_train, y_test = split(X, y)
 
             perceptron = PerceptronClassifier(learning_rate=1.0, max_epochs=50).fit(X_train, y_train)
@@ -894,9 +901,9 @@ def build_knn_kmeans() -> None:
             queries = np.array([[0.0, 0.0], [2.0, 2.0]])
             references = np.array([[0.0, 1.0], [1.0, 0.0], [3.0, 3.0]])
             squared_distances = np.sum(
-                (queries[:, None, :] - references[None, :, :]) ** 2,
+                (queries[:, None, :] - references[None, :, :]) ** 2,  # Broadcast to (n_queries, n_references, d).
                 axis=2,
-            )
+            )  # Squared distance preserves neighbor ordering without computing square roots.
 
             show("Distances | query/reference shapes", (queries.shape, references.shape))
             show("Distances | pairwise squared matrix", squared_distances)
@@ -921,7 +928,7 @@ def build_knn_kmeans() -> None:
             scale_demo = np.array([[0.0, 1.0], [1.0, 1000.0], [2.0, 1100.0]])
             mean = scale_demo.mean(axis=0)
             std = scale_demo.std(axis=0) + 1e-12
-            standardized = (scale_demo - mean) / std
+            standardized = (scale_demo - mean) / std  # Put both features on comparable scales.
 
             raw_distance = np.sum((scale_demo[0] - scale_demo[1:]) ** 2, axis=1)
             standardized_distance = np.sum((standardized[0] - standardized[1:]) ** 2, axis=1)
@@ -932,7 +939,7 @@ def build_knn_kmeans() -> None:
         md("## 4. K-means alternates assignment and update"),
         code(
             """
-            X = np.vstack(
+            X = np.vstack(  # Three compact clouds; labels are intentionally absent.
                 [
                     rng.normal([0, 0], 0.25, size=(100, 2)),
                     rng.normal([5, 0], 0.25, size=(100, 2)),
@@ -951,9 +958,11 @@ def build_knn_kmeans() -> None:
         code(
             """
             initial_centers = X[[0, 100, 200]].copy()
-            distances = np.sum((X[:, None, :] - initial_centers[None, :, :]) ** 2, axis=2)
-            labels = np.argmin(distances, axis=1)
-            updated_centers = np.vstack([X[labels == cluster].mean(axis=0) for cluster in range(3)])
+            distances = np.sum((X[:, None, :] - initial_centers[None, :, :]) ** 2, axis=2)  # Assignment costs (n, k).
+            labels = np.argmin(distances, axis=1)  # Assign each row to its nearest center.
+            updated_centers = np.vstack(
+                [X[labels == cluster].mean(axis=0) for cluster in range(3)]
+            )  # Replace every center with its assigned-row mean.
 
             show("One K-means iteration | initial centers", initial_centers)
             show("One K-means iteration | updated centers", updated_centers)
@@ -1021,9 +1030,9 @@ def build_sklearn() -> None:
             frame.loc[rng.choice(n_rows, 45, replace=False), "income"] = np.nan
             frame.loc[rng.choice(n_rows, 25, replace=False), "region"] = None
 
-            risk_score = frame["risk"].map({"low": 0.0, "medium": 0.8, "high": 1.6})
+            risk_score = frame["risk"].map({"low": 0.0, "medium": 0.8, "high": 1.6})  # Numeric signal used only to synthesize targets.
             region_score = frame["region"].map({"north": 0.3, "south": -0.1, "east": 0.15, "west": 0.0}).fillna(0)
-            income_filled = frame["income"].fillna(frame["income"].median())
+            income_filled = frame["income"].fillna(frame["income"].median())  # Target generation only; model imputation stays inside CV.
             purchase_logit = -4.0 + 0.000045 * income_filled + 0.025 * frame["age"] - 0.9 * risk_score + region_score
             purchase_probability = 1.0 / (1.0 + np.exp(-purchase_logit))
             y_class = (rng.random(n_rows) < purchase_probability).astype(int)
@@ -1049,7 +1058,7 @@ def build_sklearn() -> None:
             nominal_features = ["region"]
             ordinal_features = ["risk"]
 
-            numeric_pipeline = Pipeline(
+            numeric_pipeline = Pipeline(  # Fitted independently inside every CV training fold.
                 [
                     ("imputer", SimpleImputer(strategy="median")),
                     ("scaler", StandardScaler()),
@@ -1058,7 +1067,7 @@ def build_sklearn() -> None:
             nominal_pipeline = Pipeline(
                 [
                     ("imputer", SimpleImputer(strategy="most_frequent")),
-                    ("onehot", OneHotEncoder(handle_unknown="ignore")),
+                    ("onehot", OneHotEncoder(handle_unknown="ignore")),  # Unseen test categories become all-zero columns.
                 ]
             )
             ordinal_pipeline = Pipeline(
@@ -1067,7 +1076,7 @@ def build_sklearn() -> None:
                     (
                         "ordinal",
                         OrdinalEncoder(
-                            categories=[["low", "medium", "high"]],
+                            categories=[["low", "medium", "high"]],  # Preserve the domain ordering explicitly.
                             handle_unknown="use_encoded_value",
                             unknown_value=-1,
                         ),
@@ -1101,7 +1110,7 @@ def build_sklearn() -> None:
                 random_state=42,
                 stratify=y_class,
             )
-            classification_pipeline = Pipeline(
+            classification_pipeline = Pipeline(  # Couples preprocessing and model selection to prevent leakage.
                 [
                     ("preprocess", preprocessor),
                     ("model", RandomForestClassifier(random_state=42, n_jobs=1)),
@@ -1110,7 +1119,7 @@ def build_sklearn() -> None:
             classification_search = RandomizedSearchCV(
                 classification_pipeline,
                 param_distributions={
-                    "model__n_estimators": [40, 80, 120],
+                    "model__n_estimators": [40, 80, 120],  # model__ addresses the nested pipeline step.
                     "model__max_depth": [None, 5, 10],
                     "model__min_samples_leaf": [1, 3, 6],
                 },
@@ -1120,9 +1129,9 @@ def build_sklearn() -> None:
                 random_state=42,
                 n_jobs=1,
             )
-            classification_search.fit(X_train, y_train)
+            classification_search.fit(X_train, y_train)  # The held-out test split never participates in search.
             class_prediction = classification_search.predict(X_test)
-            classification_baseline = DummyClassifier(strategy="most_frequent").fit(
+            classification_baseline = DummyClassifier(strategy="most_frequent").fit(  # Minimum useful comparison, not a tuned model.
                 X_train, y_train
             )
             baseline_class_prediction = classification_baseline.predict(X_test)
@@ -1147,7 +1156,7 @@ def build_sklearn() -> None:
                 test_size=0.25,
                 random_state=42,
             )
-            regression_pipeline = Pipeline(
+            regression_pipeline = Pipeline(  # Reuse the same preprocessing contract for a different target/model.
                 [
                     ("preprocess", preprocessor),
                     ("model", RandomForestRegressor(random_state=42, n_jobs=1)),
@@ -1166,7 +1175,7 @@ def build_sklearn() -> None:
                 random_state=42,
                 n_jobs=1,
             )
-            regression_search.fit(X_train_reg, y_train_reg)
+            regression_search.fit(X_train_reg, y_train_reg)  # Preprocessing is refit within each regression CV fold.
             regression_prediction = regression_search.predict(X_test_reg)
             rmse = np.sqrt(mean_squared_error(y_test_reg, regression_prediction))
             regression_baseline = DummyRegressor(strategy="mean").fit(X_train_reg, y_train_reg)
@@ -1186,7 +1195,7 @@ def build_sklearn() -> None:
         md("## 5. Inspect the fitted feature space"),
         code(
             """
-            fitted_preprocessor = classification_search.best_estimator_.named_steps["preprocess"]
+            fitted_preprocessor = classification_search.best_estimator_.named_steps["preprocess"]  # Inspect the refit winner, not the unfitted template.
             feature_names = fitted_preprocessor.get_feature_names_out()
             transformed_sample = fitted_preprocessor.transform(X_test.head(3))
 
@@ -1243,7 +1252,7 @@ def build_pytorch_fundamentals() -> None:
                 print(f"\\n--- {label} ---\\n{value}")
 
             seed_all()
-            device = torch.device("mps" if torch.backends.mps.is_available() else "cuda" if torch.cuda.is_available() else "cpu")
+            device = torch.device("mps" if torch.backends.mps.is_available() else "cuda" if torch.cuda.is_available() else "cpu")  # Prefer an available accelerator.
             show("Environment | torch version", torch.__version__)
             show("Environment | selected device", device)
             """
@@ -1260,16 +1269,16 @@ def build_pytorch_fundamentals() -> None:
             X = torch.arange(12, dtype=torch.float32).reshape(3, 4)
             bias = torch.tensor([1.0, 2.0, 3.0, 4.0])
             shifted = X + bias
-            expanded = X.unsqueeze(0)            # (1, 3, 4)
-            permuted = expanded.permute(0, 2, 1) # (1, 4, 3)
-            concatenated = torch.cat([X, X], dim=0) # (6, 4)
-            stacked = torch.stack([X, X], dim=0)    # (2, 3, 4)
+            expanded = X.unsqueeze(0)               # Insert batch dimension: (1, 3, 4).
+            permuted = expanded.permute(0, 2, 1)    # Reorder axes without changing values: (1, 4, 3).
+            concatenated = torch.cat([X, X], dim=0) # Extend an existing dimension: (6, 4).
+            stacked = torch.stack([X, X], dim=0)    # Create a new dimension: (2, 3, 4).
 
             numpy_source = np.arange(6, dtype=np.float32).reshape(2, 3)
-            shared_tensor = torch.from_numpy(numpy_source)
-            copied_tensor = torch.tensor(numpy_source)
-            numpy_source[0, 0] = -1.0
-            detached_numpy = shifted.detach().cpu().numpy()
+            shared_tensor = torch.from_numpy(numpy_source)  # Shares CPU storage with numpy_source.
+            copied_tensor = torch.tensor(numpy_source)      # Owns independent storage.
+            numpy_source[0, 0] = -1.0  # Mutation appears only through the shared tensor.
+            detached_numpy = shifted.detach().cpu().numpy()  # Leave autograd, then ensure CPU-backed memory.
 
             show("Tensor | X shape/dtype/device", (tuple(X.shape), X.dtype, X.device))
             show("Broadcast | X + bias shape", tuple(shifted.shape))
@@ -1288,12 +1297,12 @@ def build_pytorch_fundamentals() -> None:
             """
             weight = torch.tensor(2.0, requires_grad=True)
             loss = (weight * 3.0 - 7.0) ** 2
-            loss.backward()
+            loss.backward()  # Populate weight.grad through the recorded computation graph.
             first_gradient = weight.grad.item()
             second_loss = (weight * 3.0 - 7.0) ** 2
-            second_loss.backward()
+            second_loss.backward()  # Gradients add to existing .grad by default.
             accumulated_gradient = weight.grad.item()
-            weight.grad.zero_()
+            weight.grad.zero_()  # Clear in place before a future optimization step.
 
             show("Autograd | scalar loss", loss.item())
             show("Autograd | first gradient", first_gradient)
@@ -1306,13 +1315,13 @@ def build_pytorch_fundamentals() -> None:
             """
             n_rows, n_features = 1_200, 5
             features = torch.randn(n_rows, n_features)
-            true_weight = torch.tensor([1.5, -2.0, 0.5, 3.0, -1.0]).reshape(-1, 1)
+            true_weight = torch.tensor([1.5, -2.0, 0.5, 3.0, -1.0]).reshape(-1, 1)  # Column shape keeps targets (n, 1).
             targets = features @ true_weight + 0.4 + 0.2 * torch.randn(n_rows, 1)
 
             train_dataset = TensorDataset(features[:900], targets[:900])
             validation_dataset = TensorDataset(features[900:], targets[900:])
-            train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True)
-            validation_loader = DataLoader(validation_dataset, batch_size=128, shuffle=False)
+            train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True)       # Reshuffle training order each epoch.
+            validation_loader = DataLoader(validation_dataset, batch_size=128, shuffle=False)  # Stable evaluation order.
             sample_X, sample_y = next(iter(train_loader))
 
             show("DataLoader | feature and target batch shapes", (tuple(sample_X.shape), tuple(sample_y.shape)))
@@ -1331,32 +1340,32 @@ def build_pytorch_fundamentals() -> None:
                     )
 
                 def forward(self, X):
-                    return self.network(X)
+                    return self.network(X)  # Preserve the leading batch dimension: (batch, 1).
 
             def train_epoch(model, loader, optimizer, loss_fn):
-                model.train()
+                model.train()  # Activate training behavior such as dropout/batch-norm updates.
                 total_loss = 0.0
                 total_examples = 0
                 for X_batch, y_batch in loader:
                     X_batch, y_batch = X_batch.to(device), y_batch.to(device)
-                    optimizer.zero_grad(set_to_none=True)
+                    optimizer.zero_grad(set_to_none=True)  # Prevent cross-batch gradient accumulation.
                     prediction = model(X_batch)
                     loss = loss_fn(prediction, y_batch)
                     loss.backward()
                     optimizer.step()
-                    total_loss += loss.item() * len(X_batch)
+                    total_loss += loss.item() * len(X_batch)  # Convert batch mean to a sample-weighted sum.
                     total_examples += len(X_batch)
                 return total_loss / total_examples
 
             def evaluate(model, loader, loss_fn):
-                model.eval()
+                model.eval()  # Switch stateful layers to inference behavior.
                 total_loss = 0.0
                 total_examples = 0
-                with torch.no_grad():
+                with torch.no_grad():  # Avoid building graphs that evaluation will never backpropagate through.
                     for X_batch, y_batch in loader:
                         X_batch, y_batch = X_batch.to(device), y_batch.to(device)
                         loss = loss_fn(model(X_batch), y_batch)
-                        total_loss += loss.item() * len(X_batch)
+                        total_loss += loss.item() * len(X_batch)  # Keep the epoch mean correct for a short final batch.
                         total_examples += len(X_batch)
                 return total_loss / total_examples
             """
@@ -1381,10 +1390,10 @@ def build_pytorch_fundamentals() -> None:
         code(
             """
             checkpoint_path = external_path("models", "tiny_regressor_state.pt", create_parent=True)
-            torch.save(model.state_dict(), checkpoint_path)
+            torch.save(model.state_dict(), checkpoint_path)  # Store learned tensors, not the Python model object.
 
             restored = TinyRegressor(n_features).to(device)
-            restored.load_state_dict(torch.load(checkpoint_path, map_location=device, weights_only=True))
+            restored.load_state_dict(torch.load(checkpoint_path, map_location=device, weights_only=True))  # Restore safely across devices.
             restored_loss = evaluate(restored, validation_loader, loss_fn)
 
             assert concatenated.shape == (6, 4)
@@ -1429,7 +1438,7 @@ def build_image_classification() -> None:
                 print(f"\\n--- {label} ---\\n{value}")
 
             seed_all()
-            device = torch.device("mps" if torch.backends.mps.is_available() else "cuda" if torch.cuda.is_available() else "cpu")
+            device = torch.device("mps" if torch.backends.mps.is_available() else "cuda" if torch.cuda.is_available() else "cpu")  # Keep model and batches on one device.
             show("Environment | selected device", device)
             """
         ),
@@ -1441,15 +1450,15 @@ def build_image_classification() -> None:
 
                 def __init__(self, n_samples=600, image_size=20, seed=61):
                     generator = torch.Generator().manual_seed(seed)
-                    self.labels = torch.arange(n_samples) % 2
+                    self.labels = torch.arange(n_samples) % 2  # Deterministic balanced class sequence.
                     self.filenames = [f"shape_{index:04d}.png" for index in range(n_samples)]
                     coordinates = torch.linspace(-1, 1, image_size)
-                    yy, xx = torch.meshgrid(coordinates, coordinates, indexing="ij")
+                    yy, xx = torch.meshgrid(coordinates, coordinates, indexing="ij")  # Pixel-coordinate grids: (H, W).
                     circle = ((xx**2 + yy**2) <= 0.48**2).float()
                     square = ((xx.abs() <= 0.48) & (yy.abs() <= 0.48)).float()
-                    templates = torch.stack([circle, square])[:, None, :, :]
+                    templates = torch.stack([circle, square])[:, None, :, :]  # Class templates in (classes, C, H, W).
                     noise = 0.12 * torch.randn(n_samples, 1, image_size, image_size, generator=generator)
-                    self.images = (templates[self.labels] + noise).clamp(0, 1)
+                    self.images = (templates[self.labels] + noise).clamp(0, 1)  # Index the template for each label, then perturb pixels.
 
                 def __len__(self):
                     return len(self.labels)
@@ -1461,9 +1470,9 @@ def build_image_classification() -> None:
             train_dataset, validation_dataset, test_dataset = random_split(
                 dataset,
                 [420, 90, 90],
-                generator=torch.Generator().manual_seed(61),
+                generator=torch.Generator().manual_seed(61),  # Reproducible, disjoint subsets.
             )
-            train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True)
+            train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True)  # Shuffle training examples only.
             validation_loader = DataLoader(validation_dataset, batch_size=128, shuffle=False)
             test_loader = DataLoader(test_dataset, batch_size=128, shuffle=False)
             sample_X, sample_y, sample_names = next(iter(train_loader))
@@ -1485,12 +1494,12 @@ def build_image_classification() -> None:
                         nn.MaxPool2d(2),
                         nn.Conv2d(8, 16, kernel_size=3, padding=1),
                         nn.ReLU(),
-                        nn.AdaptiveAvgPool2d(1),
+                        nn.AdaptiveAvgPool2d(1),  # Collapse any spatial size to one value per channel.
                     )
                     self.classifier = nn.Linear(16, n_classes)
 
                 def forward(self, X):
-                    features = self.features(X).flatten(1)
+                    features = self.features(X).flatten(1)  # (N, 16, 1, 1) -> (N, 16); keep batch axis.
                     return self.classifier(features)
 
             model = SmallCNN().to(device)
@@ -1503,12 +1512,12 @@ def build_image_classification() -> None:
         code(
             """
             def run_epoch(model, loader, loss_fn, optimizer=None):
-                training = optimizer is not None
-                model.train(training)
+                training = optimizer is not None  # One loop; optimizer presence selects train versus evaluation.
+                model.train(training)             # Propagate the mode to every submodule.
                 total_loss = 0.0
                 total_correct = 0
                 total_examples = 0
-                context = torch.enable_grad() if training else torch.no_grad()
+                context = torch.enable_grad() if training else torch.no_grad()  # Build graphs only for updates.
                 with context:
                     for X_batch, y_batch, _ in loader:
                         X_batch, y_batch = X_batch.to(device), y_batch.to(device)
@@ -1519,12 +1528,12 @@ def build_image_classification() -> None:
                         if training:
                             loss.backward()
                             optimizer.step()
-                        total_loss += loss.item() * len(X_batch)
+                        total_loss += loss.item() * len(X_batch)  # Sample-weighted total handles a short final batch.
                         total_correct += (logits.argmax(dim=1) == y_batch).sum().item()
                         total_examples += len(X_batch)
                 return total_loss / total_examples, total_correct / total_examples
 
-            loss_fn = nn.CrossEntropyLoss()
+            loss_fn = nn.CrossEntropyLoss()  # Expects raw (N, classes) logits and integer class indices.
             optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
             for epoch in range(1, 7):
                 train_loss, train_accuracy = run_epoch(model, train_loader, loss_fn, optimizer)
@@ -1544,7 +1553,7 @@ def build_image_classification() -> None:
             rows = []
             with torch.no_grad():
                 for X_batch, y_batch, names in test_loader:
-                    probabilities = torch.softmax(model(X_batch.to(device)), dim=1).cpu()
+                    probabilities = torch.softmax(model(X_batch.to(device)), dim=1).cpu()  # Return probabilities to CPU for reporting.
                     predictions = probabilities.argmax(dim=1)
                     for name, target, prediction, confidence in zip(
                         names,
@@ -1567,10 +1576,10 @@ def build_image_classification() -> None:
             confusion = pd.crosstab(inference["target"], inference["prediction"]).reindex(
                 index=dataset.classes,
                 columns=dataset.classes,
-                fill_value=0,
-            )
+                fill_value=0,  # Retain classes even if a row/column has no observations.
+            )  # Rows are actual classes; columns are predicted classes.
             per_class_recall = pd.Series(
-                np.diag(confusion) / confusion.sum(axis=1),
+                np.diag(confusion) / confusion.sum(axis=1),  # Correct predictions / actual examples per class.
                 index=dataset.classes,
                 name="recall",
             )
@@ -1605,7 +1614,7 @@ def build_visualization() -> None:
         code(
             """
             import matplotlib
-            matplotlib.use("Agg")
+            matplotlib.use("Agg")  # Render without opening a GUI or retaining figures in the vault.
 
             import matplotlib.pyplot as plt
             import numpy as np
@@ -1621,7 +1630,7 @@ def build_visualization() -> None:
             n_rows = 500
             segment = rng.choice(["new", "core", "premium"], size=n_rows, p=[0.35, 0.45, 0.20])
             tenure = rng.integers(1, 73, size=n_rows)
-            base_spend = pd.Series(segment).map({"new": 45, "core": 80, "premium": 145}).to_numpy()
+            base_spend = pd.Series(segment).map({"new": 45, "core": 80, "premium": 145}).to_numpy()  # Segment-level signal.
             spend = base_spend + 0.8 * tenure + rng.normal(0, 25, size=n_rows)
             support_calls = np.maximum(0, rng.poisson(2.5, size=n_rows) - (segment == "premium").astype(int))
             churn_probability = 1 / (1 + np.exp(-(-1.5 - 0.015 * tenure + 0.25 * support_calls)))
@@ -1642,7 +1651,7 @@ def build_visualization() -> None:
         code(
             """
             fig, ax = plt.subplots(figsize=(7, 4))
-            sns.histplot(data=customers, x="monthly_spend", hue="segment", element="step", stat="density", common_norm=False, ax=ax)
+            sns.histplot(data=customers, x="monthly_spend", hue="segment", element="step", stat="density", common_norm=False, ax=ax)  # Normalize each segment independently for shape comparison.
             ax.set(title="Monthly spend distribution by segment", xlabel="Monthly spend (currency units)", ylabel="Density")
             fig.tight_layout()
             plt.show()
@@ -1654,7 +1663,7 @@ def build_visualization() -> None:
             """
             fig, ax = plt.subplots(figsize=(7, 4))
             sns.boxplot(data=customers, x="segment", y="monthly_spend", order=["new", "core", "premium"], ax=ax)
-            sample = customers.sample(120, random_state=42)
+            sample = customers.sample(120, random_state=42)  # Show individual observations without saturating the plot.
             sns.stripplot(data=sample, x="segment", y="monthly_spend", order=["new", "core", "premium"], color="black", alpha=0.35, size=3, ax=ax)
             ax.set(title="Spend spread by customer segment", xlabel="Segment", ylabel="Monthly spend")
             fig.tight_layout()
@@ -1665,13 +1674,13 @@ def build_visualization() -> None:
         md("## 3. Question: does tenure relate to spend differently by segment?"),
         code(
             """
-            sampled = customers.sample(250, random_state=42)
+            sampled = customers.sample(250, random_state=42)  # Bound visual clutter while keeping sampling reproducible.
             plot = sns.relplot(
                 data=sampled,
                 x="tenure_months",
                 y="monthly_spend",
                 hue="segment",
-                col="churned",
+                col="churned",  # Facet the relationship instead of encoding another variable on one crowded axis.
                 kind="scatter",
                 alpha=0.65,
                 height=4,
@@ -1688,7 +1697,7 @@ def build_visualization() -> None:
             """
             correlation = customers[["tenure_months", "monthly_spend", "support_calls", "churned"]].corr(numeric_only=True)
             fig, ax = plt.subplots(figsize=(6, 5))
-            sns.heatmap(correlation, annot=True, fmt=".2f", cmap="vlag", center=0, square=True, ax=ax)
+            sns.heatmap(correlation, annot=True, fmt=".2f", cmap="vlag", center=0, square=True, ax=ax)  # Diverging scale makes sign and magnitude comparable.
             ax.set_title("Selected numeric correlations")
             fig.tight_layout()
             plt.show()
@@ -1700,7 +1709,7 @@ def build_visualization() -> None:
         md("## 5. Interpretation discipline"),
         code(
             """
-            segment_summary = customers.groupby("segment", observed=True).agg(
+            segment_summary = customers.groupby("segment", observed=True).agg(  # Numerical evidence behind the visual comparison.
                 customers=("segment", "size"),
                 median_spend=("monthly_spend", "median"),
                 churn_rate=("churned", "mean"),
@@ -1751,19 +1760,19 @@ def build_automl() -> None:
                     "channel": rng.choice(["web", "app", "store"], size=n_rows),
                 }
             )
-            logit = -3.0 + 0.00004 * data["income"] + 0.018 * data["age"] + (data["channel"] == "app") * 0.4
+            logit = -3.0 + 0.00004 * data["income"] + 0.018 * data["age"] + (data["channel"] == "app") * 0.4  # Controlled synthetic signal.
             probability = 1 / (1 + np.exp(-logit))
             data["label"] = (rng.random(n_rows) < probability).astype(int)
             train_data, test_data = train_test_split(
                 data,
                 test_size=0.25,
                 random_state=42,
-                stratify=data["label"],
+                stratify=data["label"],  # Preserve class balance in the untouched test set.
             )
 
             has_autogluon = importlib.util.find_spec("autogluon") is not None
             has_pycaret = importlib.util.find_spec("pycaret") is not None
-            run_automl = os.environ.get("RUN_AUTOML") == "1"
+            run_automl = os.environ.get("RUN_AUTOML") == "1"  # Explicit opt-in prevents accidental heavy runs.
 
             show("Dataset | train/test shapes", (train_data.shape, test_data.shape))
             show("Optional stack | availability", {"AutoGluon": has_autogluon, "PyCaret": has_pycaret, "RUN_AUTOML": run_automl})
@@ -1775,18 +1784,18 @@ def build_automl() -> None:
             def run_autogluon(train_frame, test_frame, time_limit=120):
                 from autogluon.tabular import TabularPredictor
 
-                model_path = external_path("models", "autogluon_tabular_demo")
+                model_path = external_path("models", "autogluon_tabular_demo")  # Keep generated artifacts outside the Obsidian vault.
                 predictor = TabularPredictor(
                     label="label",
-                    eval_metric="f1",
+                    eval_metric="f1",  # Match model selection to the stated classification objective.
                     path=str(model_path),
                 )
                 predictor.fit(
                     train_data=train_frame,
-                    time_limit=time_limit,
+                    time_limit=time_limit,  # Make compute budget part of the experiment contract.
                     presets="medium_quality",
                 )
-                return predictor, predictor.evaluate(test_frame), predictor.leaderboard(test_frame)
+                return predictor, predictor.evaluate(test_frame), predictor.leaderboard(test_frame)  # Touch held-out data only after fitting.
 
             if run_automl and has_autogluon:
                 autogluon_predictor, autogluon_score, autogluon_leaderboard = run_autogluon(train_data, test_data)
@@ -1806,13 +1815,13 @@ def build_automl() -> None:
                 experiment.setup(
                     data=train_frame,
                     target="label",
-                    session_id=42,
+                    session_id=42,  # Reproducible setup and cross-validation.
                     html=False,
                     verbose=False,
                 )
-                best_model = experiment.compare_models(turbo=True)
-                finalized_model = experiment.finalize_model(best_model)
-                predictions = experiment.predict_model(finalized_model, data=test_frame)
+                best_model = experiment.compare_models(turbo=True)  # Select by CV within train_frame.
+                finalized_model = experiment.finalize_model(best_model)  # Refit the winner on all setup rows.
+                predictions = experiment.predict_model(finalized_model, data=test_frame)  # Evaluate once on held-out rows.
                 return experiment, finalized_model, predictions
 
             if run_automl and has_pycaret:

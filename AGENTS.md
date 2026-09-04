@@ -67,6 +67,7 @@ Code-cell rules:
 
 - Use deterministic random seeds.
 - State important shapes next to the relevant code.
+- Annotate consequential lines with intent, shape changes, invariants, or subtle API behavior. Prefer a short trailing comment when it stays readable and a preceding comment otherwise; do not narrate obvious syntax.
 - Label printed results so every output can be traced to a line or operation. Avoid bare `print(array)` and unexplained final expressions.
 - Put reusable implementations in `src/datacoding/`; avoid multiple drifting copies.
 - Use train/validation/test separation where evaluation is demonstrated.

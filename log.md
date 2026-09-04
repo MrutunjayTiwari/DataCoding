@@ -2,10 +2,17 @@
 type: map
 status: active
 tags: [log, maintenance]
-updated: 2026-08-30
+updated: 2026-09-04
 ---
 
 # Activity Log
+
+## [2026-09-04] refinement | Revision annotations
+
+- Reviewed all eleven notebooks for self-explanatory code at an intermediate interview-preparation level.
+- Added selective comments for intent, shape/alignment changes, invariants, numerical stability, leakage boundaries, and subtle API behavior; kept obvious syntax uncommented.
+- Reworked top-k annotations to distinguish unordered `argpartition` candidates, aligned gathers, candidate-only sorting, and mapping back to original positions.
+- Made the annotation convention durable in the notebook generator and maintenance standard without adding concepts, outputs, or data.
 
 ## [2026-09-04] audit | Notebook fundamentals
 
