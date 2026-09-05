@@ -42,6 +42,19 @@ The audit adds no new teaching notebook. It strengthens six existing notebooks i
 
 All eleven notebooks use selective code comments as retrieval cues. A comment earns space when it explains intent, an important shape or alignment change, an invariant, numerical stability, leakage control, or behavior that is easy to misremember. Display/runtime configuration is annotated when it could be mistaken for a data transformation—for example, `np.set_printoptions` explicitly says that array values are unchanged. Comments use parameterized language such as “keep `k` candidates” rather than example-specific wording such as “keep two.” Obvious imports, assignments, and syntax remain uncommented; longer conceptual explanations stay in the preceding Markdown cell, and runtime evidence stays in labeled output.
 
+## Revision clarity standard
+
+Reader feedback exposed five ways a technically correct notebook can still be awkward to revise:
+
+- Use a small deterministic fixture when the lesson is the operation rather than randomness. A monotonic score matrix makes top-k alignment verifiable by eye.
+- Preserve local data flow. Once candidate scores have been gathered, reorder those scores with `candidate_order` rather than gathering again from the full source matrix.
+- State exact API semantics at the point of risk. `kth` is a zero-based position, negating scores reverses which original values occupy the smallest partition positions, and `argpartition` does not guarantee order within the selected candidates.
+- Give each cell one coherent learning job. Repeated-index accumulation, sliding windows, and NaN-aware reduction deserve separate cells because they answer unrelated questions.
+- Remove presentation scaffolding from study code. Direct labeled `print(...)` calls are closer to interview code than custom display helpers or repeated `to_string(...)` conversions.
+- Prefer direct assignment when a method chain or lambda adds syntax but does not teach a distinct operation; retain idioms such as `groupby`, `merge`, masks, and pipelines when those are the material being revised.
+
+These are editing rules, not reasons to add more material. An extra intermediate, comparison, or Markdown sentence should earn its place by making a failure-prone idea reconstructable under interview pressure.
+
 ## Connections
 
 [[index|Home]] · [[maps/learning-path|Learning path]] · [[maps/interview-revision|Interview revision]] · [[sources/legacy-coding-audit|Legacy source audit]]

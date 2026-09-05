@@ -7,6 +7,13 @@ updated: 2026-09-05
 
 # Activity Log
 
+## [2026-09-05] refinement | Reader-driven notebook clarity
+
+- Distilled reader feedback into durable rules for deterministic fixtures, local data flow, exact API semantics, single-purpose cells, and minimal presentation scaffolding.
+- Reworked NumPy top-k to use a hand-checkable matrix and reorder the already-aligned candidate scores; split repeated-index accumulation, sliding windows, and NaN-aware reductions into separate demonstrations.
+- Separated pandas missing-value repair from concatenation and PyTorch tensor operations from NumPy memory-sharing behavior.
+- Removed custom display, seed, and project-root helpers plus presentation-only `to_string(...)` calls; used direct labeled output and moved a static AutoML checklist to Markdown.
+
 ## [2026-09-05] refinement | Annotation audit
 
 - Re-audited all eleven notebooks against the intermediate-level annotation standard, including configuration and workflow boundaries missed by the first pass.

@@ -66,9 +66,14 @@ Each notebook must start with a Markdown cell containing:
 Code-cell rules:
 
 - Use deterministic random seeds.
+- Prefer small, hand-checkable fixtures when randomness is not the concept being taught.
+- Give each code cell one coherent learning job. Split unrelated APIs even when the combined cell is short.
 - State important shapes next to the relevant code.
 - Annotate consequential lines with intent, shape changes, invariants, subtle API behavior, or configuration effects that could be mistaken for data transformations. Prefer a short trailing comment when it stays readable and a preceding comment otherwise; do not narrate obvious syntax.
+- For a non-obvious API, expose the decisive intermediate or a compact counterexample instead of compensating with a long comment.
+- Keep related values aligned through the nearest intermediate; avoid reaching back to a larger source object when a local aligned value is already available.
 - Label printed results so every output can be traced to a line or operation. Avoid bare `print(array)` and unexplained final expressions.
+- Prefer direct labeled output over notebook-only display helpers. Avoid presentation-only calls such as `to_string(...)` in concept cells unless formatting itself is the lesson.
 - Put reusable implementations in `src/datacoding/`; avoid multiple drifting copies.
 - Use train/validation/test separation where evaluation is demonstrated.
 - Explain leakage risks and metric choice where relevant.
