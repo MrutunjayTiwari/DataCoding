@@ -2,7 +2,7 @@
 type: map
 status: active
 tags: [audit, notebooks, fundamentals, curriculum]
-updated: 2026-09-04
+updated: 2026-09-05
 ---
 
 # Notebook Fundamentals Audit
@@ -40,7 +40,7 @@ The audit adds no new teaching notebook. It strengthens six existing notebooks i
 
 ## Revision annotation standard
 
-All eleven notebooks use selective code comments as retrieval cues. A comment earns space when it explains intent, an important shape or alignment change, an invariant, numerical stability, leakage control, or behavior that is easy to misremember. Comments use parameterized language such as “keep `k` candidates” rather than example-specific wording such as “keep two.” Obvious imports, assignments, and syntax remain uncommented; longer conceptual explanations stay in the preceding Markdown cell, and runtime evidence stays in labeled output.
+All eleven notebooks use selective code comments as retrieval cues. A comment earns space when it explains intent, an important shape or alignment change, an invariant, numerical stability, leakage control, or behavior that is easy to misremember. Display/runtime configuration is annotated when it could be mistaken for a data transformation—for example, `np.set_printoptions` explicitly says that array values are unchanged. Comments use parameterized language such as “keep `k` candidates” rather than example-specific wording such as “keep two.” Obvious imports, assignments, and syntax remain uncommented; longer conceptual explanations stay in the preceding Markdown cell, and runtime evidence stays in labeled output.
 
 ## Connections
 

@@ -2,10 +2,16 @@
 type: map
 status: active
 tags: [log, maintenance]
-updated: 2026-09-04
+updated: 2026-09-05
 ---
 
 # Activity Log
+
+## [2026-09-05] refinement | Annotation audit
+
+- Re-audited all eleven notebooks against the intermediate-level annotation standard, including configuration and workflow boundaries missed by the first pass.
+- Clarified display-only formatting, local RNG state, train-only statistics, stratification and scorer direction, gradient clearing and model modes, convolution shapes, figure lifecycle, and held-out AutoML reporting.
+- Checked rendered comment placement after notebook formatting and retained conceptual explanations in Markdown when a line comment would become noisy.
 
 ## [2026-09-04] refinement | Revision annotations
 

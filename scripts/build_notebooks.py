@@ -55,7 +55,7 @@ def contract(
         - **Provenance:** {provenance}
 
         Output convention: every retained textual result begins with a label that identifies the operation that produced it.
-        Annotation convention: comments explain intent, shape changes, invariants, or subtle API behavior; obvious Python syntax is left uncommented.
+        Annotation convention: comments explain intent, shape changes, invariants, subtle API behavior, or configuration side effects; obvious Python syntax is left uncommented.
         """
     )
 
@@ -129,8 +129,8 @@ def build_numpy() -> None:
             """
             import numpy as np
 
-            np.set_printoptions(precision=3, suppress=True)
-            rng = np.random.default_rng(42)
+            np.set_printoptions(precision=3, suppress=True)  # Display only: 3-digit precision and no scientific notation; underlying values are unchanged.
+            rng = np.random.default_rng(42)  # Reproducible local generator without global RNG side effects.
 
             def show(label, value):
                 print(f"\\n--- {label} ---\\n{value}")
@@ -149,7 +149,7 @@ def build_numpy() -> None:
             """
             vector = np.array([1, 2, 3])
             matrix = np.array([[1, 2], [3, 4]], dtype=np.float32)
-            float_vector = vector.astype(np.float64)
+            float_vector = vector.astype(np.float64)  # Promote before operations whose fractional results must survive.
             zeros = np.zeros((2, 3))
             identity = np.eye(3)
             samples = rng.normal(size=(3, 4))
@@ -279,7 +279,7 @@ def build_numpy() -> None:
             X = rng.normal(loc=100, scale=10, size=(6, 3))
             feature_mean = X.mean(axis=0, keepdims=True)  # One statistic per feature.
             feature_std = X.std(axis=0, keepdims=True)
-            standardized = (X - feature_mean) / (feature_std + 1e-12)
+            standardized = (X - feature_mean) / (feature_std + 1e-12)  # Keep constant-feature divisions finite.
 
             show("Reduction | X.sum(axis=0) shape", X.sum(axis=0).shape)
             show("Reduction | X.sum(axis=1) shape", X.sum(axis=1).shape)
@@ -331,7 +331,7 @@ def build_numpy() -> None:
 
             left = rng.normal(size=(4, 3))
             right = rng.normal(size=(5, 3))
-            left_unit = left / (np.linalg.norm(left, axis=1, keepdims=True) + 1e-12)   # Normalize each row.
+            left_unit = left / (np.linalg.norm(left, axis=1, keepdims=True) + 1e-12)   # Normalize rows; epsilon handles zero vectors.
             right_unit = right / (np.linalg.norm(right, axis=1, keepdims=True) + 1e-12)
             cosine = left_unit @ right_unit.T  # All pairwise cosine similarities: (4, 5).
 
@@ -352,7 +352,7 @@ def build_numpy() -> None:
             from numpy.lib.stride_tricks import sliding_window_view
 
             sequence = np.arange(10)
-            windows = sliding_window_view(sequence, window_shape=4)  # Overlapping view; no window copies.
+            windows = sliding_window_view(sequence, window_shape=4)  # Overlapping view; avoid writing through it.
             values_with_nan = np.array([1.0, np.nan, 3.0, np.nan, 5.0])
 
             show("Scatter-add | accumulated repeated indices", accumulated)
@@ -375,6 +375,7 @@ def build_numpy() -> None:
             true_positive = np.sum((y_true == 1) & (y_pred == 1))
             false_positive = np.sum((y_true == 0) & (y_pred == 1))
             false_negative = np.sum((y_true == 1) & (y_pred == 0))
+            # Epsilon gives this compact drill a finite zero-denominator policy.
             precision = true_positive / (true_positive + false_positive + 1e-12)
             recall = true_positive / (true_positive + false_negative + 1e-12)
             f1 = 2 * precision * recall / (precision + recall + 1e-12)
@@ -471,7 +472,7 @@ def build_pandas() -> None:
 
             numeric_revenue = pd.to_numeric(messy["revenue_text"], errors="coerce")  # Invalid text becomes NaN for audit/repair.
             cleaned = messy.assign(
-                revenue=numeric_revenue.fillna(numeric_revenue.median()),
+                revenue=numeric_revenue.fillna(numeric_revenue.median()),  # In ML, learn this fill value on training rows only.
                 channel=messy["channel"].fillna("unknown"),
             )
             recombined = pd.concat([events.iloc[:5], events.iloc[5:]], ignore_index=True)  # Stack rows and rebuild a clean index.
@@ -533,11 +534,11 @@ def build_pandas() -> None:
             ordered["previous_revenue"] = ordered.groupby("user_id")["revenue"].shift(1)  # Lag before rolling to exclude the current event.
             ordered["prior_two_mean"] = (
                 ordered.groupby("user_id")["previous_revenue"]
-                .rolling(2, min_periods=1)
+                .rolling(2, min_periods=1)  # Emit an early value when only one prior event exists.
                 .mean()
                 .reset_index(level=0, drop=True)  # Remove the group level so values align to ordered's index.
             )
-            ordered["month"] = ordered["timestamp"].dt.to_period("M")
+            ordered["month"] = ordered["timestamp"].dt.to_period("M")  # Calendar month period, not a formatted display string.
 
             show(
                 "Time features | previous event, gap, lagged rolling mean",
@@ -550,7 +551,7 @@ def build_pandas() -> None:
             """
             string_features = events[["event_id", "note", "channel"]].copy()
             string_features["order_id"] = string_features["note"].str.extract(r"(ORD-\\d+)")  # The capture group becomes the new column.
-            string_features["channel"] = string_features["channel"].astype("category")  # Record a small, fixed vocabulary.
+            string_features["channel"] = string_features["channel"].astype("category")  # Store repeated labels as categorical levels.
 
             show("Strings | extracted order identifiers", string_features.head(6).to_string(index=False))
             show("Categorical | channel categories", string_features["channel"].cat.categories.tolist())
@@ -635,7 +636,7 @@ def build_oop() -> None:
             from datacoding.algorithms import KMeans, KNNClassifier, LinearRegressionGD
             from datacoding.algorithms._validation import NotFittedError
 
-            rng = np.random.default_rng(11)
+            rng = np.random.default_rng(11)  # Reproducible local generator without global RNG side effects.
 
             def show(label, value):
                 print(f"\\n--- {label} ---\\n{value}")
@@ -651,11 +652,14 @@ def build_oop() -> None:
         code(
             """
             model = LinearRegressionGD(learning_rate=0.08, max_iter=2_000, l2=0.001)
-            show("Estimator | constructor configuration", {key: value for key, value in vars(model).items() if not key.endswith("_")})
+            configuration = {
+                key: value for key, value in vars(model).items() if not key.endswith("_")
+            }  # By convention, trailing-underscore attributes are learned state rather than configuration.
+            show("Estimator | constructor configuration", configuration)
 
             X = rng.normal(size=(200, 2))
             y = 2.0 * X[:, 0] - 1.5 * X[:, 1] + 0.7
-            model.fit(X, y)  # fit mutates learned attributes ending in an underscore.
+            model.fit(X, y)  # Populate learned attributes such as coef_ and intercept_.
 
             learned = {"coef_": model.coef_, "intercept_": model.intercept_, "n_features_in_": model.n_features_in_}
             show("Estimator | learned state after fit", learned)
@@ -664,14 +668,14 @@ def build_oop() -> None:
         md("## 2. A focused transformer class"),
         code(
             """
-            @dataclass
+            @dataclass  # Generate the constructor for explicit hyperparameter fields only.
             class Standardizer:
                 epsilon: float = 1e-12
 
                 def fit(self, X):
                     values = np.asarray(X, dtype=float)
                     self.mean_ = values.mean(axis=0)  # Learned state: one statistic per feature.
-                    self.scale_ = values.std(axis=0) + self.epsilon
+                    self.scale_ = values.std(axis=0) + self.epsilon  # Keep constant-feature transforms finite.
                     return self  # Returning self enables estimator-style chaining.
 
                 def transform(self, X):
@@ -691,13 +695,13 @@ def build_oop() -> None:
         md("## 3. Composition instead of deep inheritance"),
         code(
             """
-            @dataclass
+            @dataclass  # Treat component objects as pipeline configuration.
             class RegressionPipeline:
                 transformer: Standardizer
                 estimator: LinearRegressionGD
 
                 def fit(self, X, y):
-                    transformed = self.transformer.fit_transform(X)  # Fit preprocessing before fitting the estimator.
+                    transformed = self.transformer.fit_transform(X)  # Learn preprocessing only during pipeline.fit.
                     self.estimator.fit(transformed, y)
                     return self
 
@@ -766,7 +770,7 @@ def build_linear_models() -> None:
 
             from datacoding.algorithms import LinearRegressionGD, LogisticRegressionGD, PerceptronClassifier
 
-            rng = np.random.default_rng(21)
+            rng = np.random.default_rng(21)  # Reproducible local generator without global RNG side effects.
 
             def show(label, value):
                 print(f"\\n--- {label} ---\\n{value}")
@@ -779,7 +783,7 @@ def build_linear_models() -> None:
 
             def standardize_train_test(X_train, X_test):
                 mean = X_train.mean(axis=0)  # Learn preprocessing from training rows only.
-                scale = X_train.std(axis=0) + 1e-12
+                scale = X_train.std(axis=0) + 1e-12  # Protect constant training features from zero division.
                 return (X_train - mean) / scale, (X_test - mean) / scale
             """
         ),
@@ -889,7 +893,7 @@ def build_knn_kmeans() -> None:
 
             from datacoding.algorithms import KMeans, KNNClassifier
 
-            rng = np.random.default_rng(31)
+            rng = np.random.default_rng(31)  # Reproducible local generator without global RNG side effects.
 
             def show(label, value):
                 print(f"\\n--- {label} ---\\n{value}")
@@ -918,16 +922,22 @@ def build_knn_kmeans() -> None:
             X_query = np.array([[0.2, 0.1], [9.4, 9.2]])
 
             show("KNN | retained training shape", knn.X_train_.shape)
-            show("KNN | neighbor indices", knn._neighbor_indices(X_query))
+            show("KNN | neighbor indices", knn._neighbor_indices(X_query))  # Private helper inspected only to expose the voting mechanism.
             show("KNN | predictions", knn.predict(X_query))
             """
         ),
-        md("## 3. Feature scale can redefine nearest"),
+        md(
+            """
+            ## 3. Feature scale can redefine nearest
+
+            This isolated geometry demo standardizes its full toy matrix. In a supervised workflow, learn mean and standard deviation from the training split only.
+            """
+        ),
         code(
             """
             scale_demo = np.array([[0.0, 1.0], [1.0, 1000.0], [2.0, 1100.0]])
             mean = scale_demo.mean(axis=0)
-            std = scale_demo.std(axis=0) + 1e-12
+            std = scale_demo.std(axis=0) + 1e-12  # Keep a constant feature from producing an infinite scale.
             standardized = (scale_demo - mean) / std  # Put both features on comparable scales.
 
             raw_distance = np.sum((scale_demo[0] - scale_demo[1:]) ** 2, axis=1)
@@ -948,8 +958,9 @@ def build_knn_kmeans() -> None:
             )
             kmeans = KMeans(n_clusters=3, max_iter=100, random_state=31).fit(X)
 
+            cluster_counts = np.bincount(kmeans.labels_, minlength=3)  # Keep an explicit zero slot for any empty cluster ID.
             show("K-means | learned centers", kmeans.cluster_centers_)
-            show("K-means | cluster counts", np.bincount(kmeans.labels_, minlength=3))
+            show("K-means | cluster counts", cluster_counts)
             show("K-means | inertia", kmeans.inertia_)
             show("K-means | iterations", kmeans.n_iter_)
             """
@@ -957,7 +968,7 @@ def build_knn_kmeans() -> None:
         md("## 5. One update written explicitly"),
         code(
             """
-            initial_centers = X[[0, 100, 200]].copy()
+            initial_centers = X[[0, 100, 200]].copy()  # One seed per known toy cloud keeps this single update interpretable.
             distances = np.sum((X[:, None, :] - initial_centers[None, :, :]) ** 2, axis=2)  # Assignment costs (n, k).
             labels = np.argmin(distances, axis=1)  # Assign each row to its nearest center.
             updated_centers = np.vstack(
@@ -974,7 +985,7 @@ def build_knn_kmeans() -> None:
             assert knn.predict(X_query).tolist() == ["low", "high"]
             assert len(np.unique(kmeans.labels_)) == 3
             assert squared_distances.shape == (2, 3)
-            assert np.all(np.bincount(kmeans.labels_, minlength=3) > 0)
+            assert np.all(cluster_counts > 0)
 
             show("Distance-algorithm checks | status", "all assertions passed")
             """
@@ -1008,7 +1019,7 @@ def build_sklearn() -> None:
             from sklearn.pipeline import Pipeline
             from sklearn.preprocessing import OneHotEncoder, OrdinalEncoder, StandardScaler
 
-            rng = np.random.default_rng(41)
+            rng = np.random.default_rng(41)  # Reproducible local generator without global RNG side effects.
 
             def show(label, value):
                 print(f"\\n--- {label} ---\\n{value}")
@@ -1078,7 +1089,7 @@ def build_sklearn() -> None:
                         OrdinalEncoder(
                             categories=[["low", "medium", "high"]],  # Preserve the domain ordering explicitly.
                             handle_unknown="use_encoded_value",
-                            unknown_value=-1,
+                            unknown_value=-1,  # Reserve a sentinel outside the known 0..2 category codes.
                         ),
                     ),
                 ]
@@ -1108,9 +1119,10 @@ def build_sklearn() -> None:
                 y_class,
                 test_size=0.25,
                 random_state=42,
-                stratify=y_class,
+                stratify=y_class,  # Preserve class proportions across train and held-out test rows.
             )
-            classification_pipeline = Pipeline(  # Couples preprocessing and model selection to prevent leakage.
+            # Couple preprocessing and model selection so CV cannot leak fitted transforms.
+            classification_pipeline = Pipeline(
                 [
                     ("preprocess", preprocessor),
                     ("model", RandomForestClassifier(random_state=42, n_jobs=1)),
@@ -1124,14 +1136,16 @@ def build_sklearn() -> None:
                     "model__min_samples_leaf": [1, 3, 6],
                 },
                 n_iter=4,
-                scoring="f1",
+                scoring="f1",  # Search the metric used for the final classification comparison.
                 cv=3,
                 random_state=42,
                 n_jobs=1,
             )
-            classification_search.fit(X_train, y_train)  # The held-out test split never participates in search.
+            # Search by CV, then refit the winner on all train rows; test stays untouched.
+            classification_search.fit(X_train, y_train)
             class_prediction = classification_search.predict(X_test)
-            classification_baseline = DummyClassifier(strategy="most_frequent").fit(  # Minimum useful comparison, not a tuned model.
+            # Minimum useful comparison, not another tuned model.
+            classification_baseline = DummyClassifier(strategy="most_frequent").fit(
                 X_train, y_train
             )
             baseline_class_prediction = classification_baseline.predict(X_test)
@@ -1144,7 +1158,13 @@ def build_sklearn() -> None:
                 "Classification | baseline versus tuned held-out F1",
                 {"dummy_most_frequent": baseline_f1, "random_forest": classification_f1},
             )
-            show("Classification | held-out report", classification_report(y_test, class_prediction, digits=3, zero_division=0))
+            class_report = classification_report(
+                y_test,
+                class_prediction,
+                digits=3,
+                zero_division=0,  # Make undefined precision/recall behavior explicit.
+            )
+            show("Classification | held-out report", class_report)
             """
         ),
         md("## 4. Regression: baseline and pipeline using the same preprocessing contract"),
@@ -1156,7 +1176,8 @@ def build_sklearn() -> None:
                 test_size=0.25,
                 random_state=42,
             )
-            regression_pipeline = Pipeline(  # Reuse the same preprocessing contract for a different target/model.
+            # Reuse the same preprocessing contract for a different target and model.
+            regression_pipeline = Pipeline(
                 [
                     ("preprocess", preprocessor),
                     ("model", RandomForestRegressor(random_state=42, n_jobs=1)),
@@ -1170,14 +1191,15 @@ def build_sklearn() -> None:
                     "model__min_samples_leaf": [1, 3, 6],
                 },
                 n_iter=4,
-                scoring="neg_mean_squared_error",
+                scoring="neg_mean_squared_error",  # sklearn maximizes scores, so loss metrics are negated.
                 cv=3,
                 random_state=42,
                 n_jobs=1,
             )
-            regression_search.fit(X_train_reg, y_train_reg)  # Preprocessing is refit within each regression CV fold.
+            # Fit preprocessing per CV fold, then refit the winner on all train rows.
+            regression_search.fit(X_train_reg, y_train_reg)
             regression_prediction = regression_search.predict(X_test_reg)
-            rmse = np.sqrt(mean_squared_error(y_test_reg, regression_prediction))
+            rmse = np.sqrt(mean_squared_error(y_test_reg, regression_prediction))  # Return error to target units.
             regression_baseline = DummyRegressor(strategy="mean").fit(X_train_reg, y_train_reg)
             baseline_regression_prediction = regression_baseline.predict(X_test_reg)
             baseline_rmse = np.sqrt(
@@ -1251,8 +1273,9 @@ def build_pytorch_fundamentals() -> None:
             def show(label, value):
                 print(f"\\n--- {label} ---\\n{value}")
 
-            seed_all()
-            device = torch.device("mps" if torch.backends.mps.is_available() else "cuda" if torch.cuda.is_available() else "cpu")  # Prefer an available accelerator.
+            seed_all()  # Align Python, NumPy, and PyTorch randomness for this executable example.
+            # Select one device reused by model and batches.
+            device = torch.device("mps" if torch.backends.mps.is_available() else "cuda" if torch.cuda.is_available() else "cpu")
             show("Environment | torch version", torch.__version__)
             show("Environment | selected device", device)
             """
@@ -1267,10 +1290,10 @@ def build_pytorch_fundamentals() -> None:
         code(
             """
             X = torch.arange(12, dtype=torch.float32).reshape(3, 4)
-            bias = torch.tensor([1.0, 2.0, 3.0, 4.0])
+            bias = torch.tensor([1.0, 2.0, 3.0, 4.0])  # Shape (4,) aligns with X's trailing feature axis.
             shifted = X + bias
             expanded = X.unsqueeze(0)               # Insert batch dimension: (1, 3, 4).
-            permuted = expanded.permute(0, 2, 1)    # Reorder axes without changing values: (1, 4, 3).
+            permuted = expanded.permute(0, 2, 1)    # Reorder via strides: (1, 4, 3); result may be non-contiguous.
             concatenated = torch.cat([X, X], dim=0) # Extend an existing dimension: (6, 4).
             stacked = torch.stack([X, X], dim=0)    # Create a new dimension: (2, 3, 4).
 
@@ -1343,12 +1366,12 @@ def build_pytorch_fundamentals() -> None:
                     return self.network(X)  # Preserve the leading batch dimension: (batch, 1).
 
             def train_epoch(model, loader, optimizer, loss_fn):
-                model.train()  # Activate training behavior such as dropout/batch-norm updates.
+                model.train()  # Enable dropout/batch-norm training behavior; gradient tracking is separate.
                 total_loss = 0.0
                 total_examples = 0
                 for X_batch, y_batch in loader:
                     X_batch, y_batch = X_batch.to(device), y_batch.to(device)
-                    optimizer.zero_grad(set_to_none=True)  # Prevent cross-batch gradient accumulation.
+                    optimizer.zero_grad(set_to_none=True)  # Clear prior gradients; None can avoid an eager zero-fill.
                     prediction = model(X_batch)
                     loss = loss_fn(prediction, y_batch)
                     loss.backward()
@@ -1358,7 +1381,7 @@ def build_pytorch_fundamentals() -> None:
                 return total_loss / total_examples
 
             def evaluate(model, loader, loss_fn):
-                model.eval()  # Switch stateful layers to inference behavior.
+                model.eval()  # Use inference behavior; no_grad below separately disables graph construction.
                 total_loss = 0.0
                 total_examples = 0
                 with torch.no_grad():  # Avoid building graphs that evaluation will never backpropagate through.
@@ -1374,7 +1397,7 @@ def build_pytorch_fundamentals() -> None:
             """
             model = TinyRegressor(n_features).to(device)
             optimizer = torch.optim.Adam(model.parameters(), lr=0.02)
-            loss_fn = nn.MSELoss()
+            loss_fn = nn.MSELoss()  # Default batch-mean reduction is reweighted during epoch aggregation.
 
             history = []
             for epoch in range(1, 7):
@@ -1389,8 +1412,10 @@ def build_pytorch_fundamentals() -> None:
         md("## 5. Save learned state outside the vault"),
         code(
             """
+            # Resolve/create an artifact path outside the vault.
             checkpoint_path = external_path("models", "tiny_regressor_state.pt", create_parent=True)
-            torch.save(model.state_dict(), checkpoint_path)  # Store learned tensors, not the Python model object.
+            # Store learned tensors, not the Python model object.
+            torch.save(model.state_dict(), checkpoint_path)
 
             restored = TinyRegressor(n_features).to(device)
             restored.load_state_dict(torch.load(checkpoint_path, map_location=device, weights_only=True))  # Restore safely across devices.
@@ -1437,8 +1462,9 @@ def build_image_classification() -> None:
             def show(label, value):
                 print(f"\\n--- {label} ---\\n{value}")
 
-            seed_all()
-            device = torch.device("mps" if torch.backends.mps.is_available() else "cuda" if torch.cuda.is_available() else "cpu")  # Keep model and batches on one device.
+            seed_all()  # Align Python, NumPy, and PyTorch randomness for this executable example.
+            # Keep model and batches on one selected device.
+            device = torch.device("mps" if torch.backends.mps.is_available() else "cuda" if torch.cuda.is_available() else "cpu")
             show("Environment | selected device", device)
             """
         ),
@@ -1449,7 +1475,7 @@ def build_image_classification() -> None:
                 classes = ("circle", "square")
 
                 def __init__(self, n_samples=600, image_size=20, seed=61):
-                    generator = torch.Generator().manual_seed(seed)
+                    generator = torch.Generator().manual_seed(seed)  # Dataset-local noise stays reproducible and isolated.
                     self.labels = torch.arange(n_samples) % 2  # Deterministic balanced class sequence.
                     self.filenames = [f"shape_{index:04d}.png" for index in range(n_samples)]
                     coordinates = torch.linspace(-1, 1, image_size)
@@ -1473,7 +1499,7 @@ def build_image_classification() -> None:
                 generator=torch.Generator().manual_seed(61),  # Reproducible, disjoint subsets.
             )
             train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True)  # Shuffle training examples only.
-            validation_loader = DataLoader(validation_dataset, batch_size=128, shuffle=False)
+            validation_loader = DataLoader(validation_dataset, batch_size=128, shuffle=False)  # Stable evaluation order.
             test_loader = DataLoader(test_dataset, batch_size=128, shuffle=False)
             sample_X, sample_y, sample_names = next(iter(train_loader))
 
@@ -1489,10 +1515,10 @@ def build_image_classification() -> None:
                 def __init__(self, n_classes=2):
                     super().__init__()
                     self.features = nn.Sequential(
-                        nn.Conv2d(1, 8, kernel_size=3, padding=1),
+                        nn.Conv2d(1, 8, kernel_size=3, padding=1),  # (N, 1, 20, 20) -> (N, 8, 20, 20).
                         nn.ReLU(),
-                        nn.MaxPool2d(2),
-                        nn.Conv2d(8, 16, kernel_size=3, padding=1),
+                        nn.MaxPool2d(2),  # Halve spatial dimensions: (N, 8, 10, 10).
+                        nn.Conv2d(8, 16, kernel_size=3, padding=1),  # Preserve 10x10, increase channels to 16.
                         nn.ReLU(),
                         nn.AdaptiveAvgPool2d(1),  # Collapse any spatial size to one value per channel.
                     )
@@ -1503,7 +1529,7 @@ def build_image_classification() -> None:
                     return self.classifier(features)
 
             model = SmallCNN().to(device)
-            with torch.no_grad():
+            with torch.no_grad():  # Shape probe only; no backward graph is needed.
                 sample_logits = model(sample_X.to(device))
             show("Model | input and logits shapes", (tuple(sample_X.shape), tuple(sample_logits.shape)))
             """
@@ -1513,7 +1539,7 @@ def build_image_classification() -> None:
             """
             def run_epoch(model, loader, loss_fn, optimizer=None):
                 training = optimizer is not None  # One loop; optimizer presence selects train versus evaluation.
-                model.train(training)             # Propagate the mode to every submodule.
+                model.train(training)             # Switch mode-sensitive layers; gradient context is handled separately.
                 total_loss = 0.0
                 total_correct = 0
                 total_examples = 0
@@ -1522,7 +1548,7 @@ def build_image_classification() -> None:
                     for X_batch, y_batch, _ in loader:
                         X_batch, y_batch = X_batch.to(device), y_batch.to(device)
                         if training:
-                            optimizer.zero_grad(set_to_none=True)
+                            optimizer.zero_grad(set_to_none=True)  # Clear prior batch gradients before backward.
                         logits = model(X_batch)
                         loss = loss_fn(logits, y_batch)
                         if training:
@@ -1549,7 +1575,7 @@ def build_image_classification() -> None:
         md("## 4. Inference remains keyed by filename"),
         code(
             """
-            model.eval()
+            model.eval()  # Select inference behavior; no_grad below separately disables graph construction.
             rows = []
             with torch.no_grad():
                 for X_batch, y_batch, names in test_loader:
@@ -1560,7 +1586,7 @@ def build_image_classification() -> None:
                         y_batch,
                         predictions,
                         probabilities.max(dim=1).values,
-                        strict=True,
+                        strict=True,  # Fail loudly if identifiers, labels, and predictions lose alignment.
                     ):
                         rows.append(
                             {
@@ -1614,15 +1640,15 @@ def build_visualization() -> None:
         code(
             """
             import matplotlib
-            matplotlib.use("Agg")  # Render without opening a GUI or retaining figures in the vault.
+            matplotlib.use("Agg")  # Select a headless rendering backend; this does not change plot data.
 
             import matplotlib.pyplot as plt
             import numpy as np
             import pandas as pd
             import seaborn as sns
 
-            rng = np.random.default_rng(71)
-            sns.set_theme(style="whitegrid", context="notebook")
+            rng = np.random.default_rng(71)  # Reproducible local generator without global RNG side effects.
+            sns.set_theme(style="whitegrid", context="notebook")  # Session-wide visual defaults; data are unchanged.
 
             def show(label, value):
                 print(f"\\n--- {label} ---\\n{value}")
@@ -1655,7 +1681,7 @@ def build_visualization() -> None:
             ax.set(title="Monthly spend distribution by segment", xlabel="Monthly spend (currency units)", ylabel="Density")
             fig.tight_layout()
             plt.show()
-            plt.close(fig)
+            plt.close(fig)  # Release the figure after display during repeated notebook runs.
             """
         ),
         md("## 2. Question: how does spend vary by segment?"),
@@ -1692,7 +1718,13 @@ def build_visualization() -> None:
             plt.close(plot.figure)
             """
         ),
-        md("## 4. Question: which numeric variables move together?"),
+        md(
+            """
+            ## 4. Question: which numeric variables move together?
+
+            Correlation summarizes linear association; inspect distributions and confounding before interpreting it, and never treat it as causal evidence.
+            """
+        ),
         code(
             """
             correlation = customers[["tenure_months", "monthly_spend", "support_calls", "churned"]].corr(numeric_only=True)
@@ -1709,7 +1741,7 @@ def build_visualization() -> None:
         md("## 5. Interpretation discipline"),
         code(
             """
-            segment_summary = customers.groupby("segment", observed=True).agg(  # Numerical evidence behind the visual comparison.
+            segment_summary = customers.groupby("segment", observed=True).agg(  # observed=True omits unused categorical levels.
                 customers=("segment", "size"),
                 median_spend=("monthly_spend", "median"),
                 churn_rate=("churned", "mean"),
@@ -1747,7 +1779,7 @@ def build_automl() -> None:
 
             from datacoding.config import external_path
 
-            rng = np.random.default_rng(81)
+            rng = np.random.default_rng(81)  # Reproducible local generator without global RNG side effects.
 
             def show(label, value):
                 print(f"\\n--- {label} ---\\n{value}")
@@ -1770,6 +1802,7 @@ def build_automl() -> None:
                 stratify=data["label"],  # Preserve class balance in the untouched test set.
             )
 
+            # Check availability without importing either heavy stack.
             has_autogluon = importlib.util.find_spec("autogluon") is not None
             has_pycaret = importlib.util.find_spec("pycaret") is not None
             run_automl = os.environ.get("RUN_AUTOML") == "1"  # Explicit opt-in prevents accidental heavy runs.
@@ -1784,7 +1817,8 @@ def build_automl() -> None:
             def run_autogluon(train_frame, test_frame, time_limit=120):
                 from autogluon.tabular import TabularPredictor
 
-                model_path = external_path("models", "autogluon_tabular_demo")  # Keep generated artifacts outside the Obsidian vault.
+                # Keep generated artifacts outside the Obsidian vault.
+                model_path = external_path("models", "autogluon_tabular_demo")
                 predictor = TabularPredictor(
                     label="label",
                     eval_metric="f1",  # Match model selection to the stated classification objective.
@@ -1795,7 +1829,10 @@ def build_automl() -> None:
                     time_limit=time_limit,  # Make compute budget part of the experiment contract.
                     presets="medium_quality",
                 )
-                return predictor, predictor.evaluate(test_frame), predictor.leaderboard(test_frame)  # Touch held-out data only after fitting.
+                held_out_metrics = predictor.evaluate(test_frame)
+                # Reporting only: do not reselect a winner from test results.
+                held_out_leaderboard = predictor.leaderboard(test_frame)
+                return predictor, held_out_metrics, held_out_leaderboard
 
             if run_automl and has_autogluon:
                 autogluon_predictor, autogluon_score, autogluon_leaderboard = run_autogluon(train_data, test_data)
@@ -1819,7 +1856,8 @@ def build_automl() -> None:
                     html=False,
                     verbose=False,
                 )
-                best_model = experiment.compare_models(turbo=True)  # Select by CV within train_frame.
+                # Select by CV while favoring the quick-baseline model set.
+                best_model = experiment.compare_models(turbo=True)
                 finalized_model = experiment.finalize_model(best_model)  # Refit the winner on all setup rows.
                 predictions = experiment.predict_model(finalized_model, data=test_frame)  # Evaluate once on held-out rows.
                 return experiment, finalized_model, predictions
