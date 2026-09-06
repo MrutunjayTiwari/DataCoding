@@ -7,6 +7,12 @@ updated: 2026-09-06
 
 # Activity Log
 
+## [2026-09-06] refinement | Standalone linear-model implementations
+
+- Replaced the local `datacoding.algorithms` import in the from-scratch linear-model notebook with concise, visible NumPy implementations of batch-gradient linear regression, logistic regression, and the perceptron.
+- Removed notebook setup helpers in favor of direct aligned splits and train-only standardization, while retaining labeled outputs, held-out metrics, convergence checks, and the `np.linalg.lstsq` reference.
+- Kept `src/datacoding/algorithms/linear_models.py` as the hardened, tested implementation and recorded the intentional teaching-copy exception in AGENTS.md and [[sources/notebook-fundamentals-audit|the notebook fundamentals audit]].
+
 ## [2026-09-06] refinement | pandas refresher rebuilt from reviewer notes
 
 - Re-ingested the curated pandas recap against the 2026-09-05 review notes: added inspection, header/dtype repair, `as_index`, SQL-style ranks, lead/pct/expanding windows, time-based rolling with a validated key merge-back, calendar features, string operations, MultiIndex flattening, `concat` pitfalls, quick plots, a gotchas checklist, and drills; removed the inert `group_keys=False`, positional `.values` alignment, timezone and `Timestamp.now()` material, and the `floor("H")` alias that raises in pandas 3.

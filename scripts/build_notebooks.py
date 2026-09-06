@@ -1463,111 +1463,320 @@ def build_linear_models() -> None:
     cells = [
         contract(
             "Linear Models from Scratch",
-            study_time="45-60 minutes",
+            study_time="60-75 minutes",
             prerequisites="NumPy broadcasting, gradients, and the estimator contract",
             mode="quick",
             data_policy="no external files or downloads; seeded synthetic train/test splits only",
-            provenance="rebuilt from the legacy NumPy ML-from-scratch notebook; rough cells removed and evaluation corrected",
-            goal="Exercise linear regression, logistic regression, and perceptron with reusable OOP implementations and held-out checks.",
+            provenance="rebuilt from the legacy NumPy ML-from-scratch notebook and the tested implementations in src/datacoding/algorithms/linear_models.py",
+            goal="Implement, inspect, and evaluate linear regression, logistic regression, and perceptron without importing project code.",
         ),
         code(
             """
             import numpy as np
 
-            from datacoding.algorithms import LinearRegressionGD, LogisticRegressionGD, PerceptronClassifier
-
+            # Display only: shorten decimals and avoid scientific notation; values stay unchanged.
+            np.set_printoptions(precision=3, suppress=True)
             rng = np.random.default_rng(21)  # Reproducible local generator without global RNG side effects.
-
-            def split(X, y, test_fraction=0.25):
-                indices = rng.permutation(len(X))  # Apply one permutation to keep X and y aligned.
-                cut = int(len(X) * (1 - test_fraction))
-                train_index, test_index = indices[:cut], indices[cut:]
-                return X[train_index], X[test_index], y[train_index], y[test_index]
-
-            def standardize_train_test(X_train, X_test):
-                mean = X_train.mean(axis=0)  # Learn preprocessing from training rows only.
-                scale = X_train.std(axis=0) + 1e-12  # Protect constant training features from zero division.
-                return (X_train - mean) / scale, (X_test - mean) / scale
             """
         ),
-        md("## 1. Linear regression: gradient descent with a least-squares reference"),
+        md(
+            """
+            ## 1. Linear regression: batch gradient descent
+
+            **Question:** Can you derive and implement `prediction = X @ weights + bias` using only NumPy?
+
+            Mean squared error gives `dL/dw = 2 X.T @ residual / n` and `dL/db = 2 mean(residual)`. Keep the bias separate so the L2 penalty applies only to feature weights. This concise class is defined here—not imported—so the implementation remains visible during revision.
+            """
+        ),
+        code(
+            """
+            class LinearRegressionGD:
+                def __init__(self, learning_rate=0.05, max_iter=2_000, l2=0.0):
+                    self.learning_rate = learning_rate
+                    self.max_iter = max_iter
+                    self.l2 = l2
+
+                def fit(self, X, y):
+                    X = np.asarray(X, dtype=float)
+                    y = np.asarray(y, dtype=float).reshape(-1)
+                    n_samples, n_features = X.shape
+
+                    self.coef_ = np.zeros(n_features)
+                    self.intercept_ = 0.0
+                    self.loss_history_ = []
+
+                    for _ in range(self.max_iter):
+                        prediction = X @ self.coef_ + self.intercept_
+                        residual = prediction - y
+
+                        # Record MSE plus an L2 penalty on feature weights, not the bias.
+                        loss = np.mean(residual**2) + self.l2 * np.sum(self.coef_**2)
+                        self.loss_history_.append(float(loss))
+
+                        # Batch gradients average contributions from all training rows.
+                        weight_gradient = 2.0 * (X.T @ residual) / n_samples
+                        weight_gradient += 2.0 * self.l2 * self.coef_
+                        bias_gradient = 2.0 * residual.mean()
+
+                        self.coef_ -= self.learning_rate * weight_gradient
+                        self.intercept_ -= self.learning_rate * bias_gradient
+
+                    return self
+
+                def predict(self, X):
+                    X = np.asarray(X, dtype=float)
+                    return X @ self.coef_ + self.intercept_
+            """
+        ),
+        md(
+            """
+            ### Fit, evaluate, and compare with least squares
+
+            Shuffle `X` and `y` with the same indices, then learn standardization statistics from training rows only. `np.linalg.lstsq` supplies a trusted closed-form reference without forming an inverse; agreement in held-out error is more useful than expecting identical parameters.
+            """
+        ),
         code(
             """
             X = rng.normal(size=(500, 3))
             true_coef = np.array([2.0, -3.0, 0.5])
-            y = X @ true_coef + 1.2 + rng.normal(scale=0.3, size=len(X))  # Signal + intercept + irreducible noise.
-            X_train, X_test, y_train, y_test = split(X, y)
-            X_train_scaled, X_test_scaled = standardize_train_test(X_train, X_test)
+            # Combine signal, intercept, and irreducible noise.
+            y = X @ true_coef + 1.2 + rng.normal(scale=0.3, size=len(X))
+
+            # Apply one permutation to preserve X/y row alignment.
+            linear_indices = rng.permutation(len(X))
+            linear_cut = int(0.75 * len(X))
+            train_index, test_index = linear_indices[:linear_cut], linear_indices[linear_cut:]
+            X_train, X_test = X[train_index], X[test_index]
+            y_train, y_test = y[train_index], y[test_index]
+
+            # Learn preprocessing statistics from training rows only.
+            train_mean = X_train.mean(axis=0)
+            train_scale = X_train.std(axis=0) + 1e-12
+            X_train_scaled = (X_train - train_mean) / train_scale
+            X_test_scaled = (X_test - train_mean) / train_scale
 
             linear = LinearRegressionGD(learning_rate=0.08, max_iter=3_000, l2=0.0001)
             linear.fit(X_train_scaled, y_train)
-            test_prediction = linear.predict(X_test_scaled)
-            test_mse = np.mean((test_prediction - y_test) ** 2)
+            linear_prediction = linear.predict(X_test_scaled)
+            linear_test_mse = np.mean((linear_prediction - y_test) ** 2)
 
-            train_design = np.column_stack([X_train_scaled, np.ones(len(X_train_scaled))])  # Append intercept column.
+            # Append an intercept column for the least-squares reference.
+            train_design = np.column_stack([X_train_scaled, np.ones(len(X_train_scaled))])
             test_design = np.column_stack([X_test_scaled, np.ones(len(X_test_scaled))])
-            least_squares_parameters = np.linalg.lstsq(train_design, y_train, rcond=None)[0]  # Stable reference solution without an inverse.
+            # Solve directly instead of forming (X.T @ X)^{-1}.
+            least_squares_parameters = np.linalg.lstsq(train_design, y_train, rcond=None)[0]
             least_squares_prediction = test_design @ least_squares_parameters
             least_squares_mse = np.mean((least_squares_prediction - y_test) ** 2)
 
             print("Linear regression | train/test shapes", (X_train_scaled.shape, X_test_scaled.shape))
             print("Linear regression | learned coefficients in scaled space", linear.coef_)
-            print("Linear regression | held-out MSE", test_mse)
+            print("Linear regression | held-out MSE", linear_test_mse)
             print("Linear regression | least-squares held-out MSE", least_squares_mse)
             print("Linear regression | first and final objective", (linear.loss_history_[0], linear.loss_history_[-1]))
             """
         ),
-        md("## 2. Logistic regression: probability plus threshold"),
+        md(
+            """
+            ## 2. Logistic regression: probability plus threshold
+
+            **Question:** How does a linear score become a binary probability model?
+
+            Apply the sigmoid to `X @ weights + bias`, optimize binary cross-entropy, and threshold only when producing labels. Clipping logits protects `exp`; clipping probabilities protects `log`. The probability gradient simplifies to `X.T @ (probability - y) / n`.
+            """
+        ),
+        code(
+            """
+            class LogisticRegressionGD:
+                def __init__(self, learning_rate=0.1, max_iter=2_000, l2=0.0):
+                    self.learning_rate = learning_rate
+                    self.max_iter = max_iter
+                    self.l2 = l2
+
+                @staticmethod
+                def _sigmoid(logits):
+                    # Bound extreme logits before exponentiation.
+                    logits = np.clip(logits, -60.0, 60.0)
+                    return 1.0 / (1.0 + np.exp(-logits))
+
+                def fit(self, X, y):
+                    X = np.asarray(X, dtype=float)
+                    y = np.asarray(y, dtype=float).reshape(-1)
+                    n_samples, n_features = X.shape
+
+                    self.coef_ = np.zeros(n_features)
+                    self.intercept_ = 0.0
+                    self.loss_history_ = []
+
+                    for _ in range(self.max_iter):
+                        probability = self._sigmoid(X @ self.coef_ + self.intercept_)
+
+                        # Protect log loss from log(0) without changing the model output.
+                        clipped = np.clip(probability, 1e-12, 1.0 - 1e-12)
+                        cross_entropy = -np.mean(
+                            y * np.log(clipped) + (1.0 - y) * np.log(1.0 - clipped)
+                        )
+                        loss = cross_entropy + self.l2 * np.sum(self.coef_**2)
+                        self.loss_history_.append(float(loss))
+
+                        residual = probability - y
+                        weight_gradient = X.T @ residual / n_samples
+                        weight_gradient += 2.0 * self.l2 * self.coef_
+                        bias_gradient = residual.mean()
+
+                        self.coef_ -= self.learning_rate * weight_gradient
+                        self.intercept_ -= self.learning_rate * bias_gradient
+
+                    return self
+
+                def predict_proba(self, X):
+                    X = np.asarray(X, dtype=float)
+                    positive = self._sigmoid(X @ self.coef_ + self.intercept_)
+                    return np.column_stack([1.0 - positive, positive])
+
+                def predict(self, X, threshold=0.5):
+                    return (self.predict_proba(X)[:, 1] >= threshold).astype(int)
+            """
+        ),
+        md(
+            """
+            ### Fit and evaluate probabilities separately from labels
+
+            The held-out log loss evaluates probability quality; accuracy evaluates the chosen `0.5` decision threshold. As above, the train/test permutation stays aligned and scaling statistics come only from training rows.
+            """
+        ),
         code(
             """
             negative = rng.normal(loc=[-1.5, -1.0], scale=0.9, size=(300, 2))
             positive = rng.normal(loc=[1.5, 1.0], scale=0.9, size=(300, 2))
             X = np.vstack([negative, positive])
             y = np.array([0] * len(negative) + [1] * len(positive))
-            X_train, X_test, y_train, y_test = split(X, y)
-            X_train_scaled, X_test_scaled = standardize_train_test(X_train, X_test)
+
+            # Apply one permutation to preserve X/y row alignment.
+            logistic_indices = rng.permutation(len(X))
+            logistic_cut = int(0.75 * len(X))
+            train_index, test_index = logistic_indices[:logistic_cut], logistic_indices[logistic_cut:]
+            X_train, X_test = X[train_index], X[test_index]
+            y_train, y_test = y[train_index], y[test_index]
+
+            # Reuse training statistics when transforming held-out rows.
+            train_mean = X_train.mean(axis=0)
+            train_scale = X_train.std(axis=0) + 1e-12
+            X_train_scaled = (X_train - train_mean) / train_scale
+            X_test_scaled = (X_test - train_mean) / train_scale
 
             logistic = LogisticRegressionGD(learning_rate=0.2, max_iter=3_000, l2=0.001)
             logistic.fit(X_train_scaled, y_train)
-            probabilities = logistic.predict_proba(X_test_scaled)[:, 1]  # Positive-class probability.
-            prediction = logistic.predict(X_test_scaled)
-            accuracy = np.mean(prediction == y_test)
-            log_loss = -np.mean(
-                y_test * np.log(np.clip(probabilities, 1e-12, 1.0))  # Clip only for numerical safety in log.
-                + (1 - y_test) * np.log(np.clip(1 - probabilities, 1e-12, 1.0))
+            probability_matrix = logistic.predict_proba(X_test_scaled)
+            probabilities = probability_matrix[:, 1]
+            logistic_prediction = logistic.predict(X_test_scaled)
+            logistic_accuracy = np.mean(logistic_prediction == y_test)
+
+            # Clip only for numerical safety in the evaluation logarithm.
+            evaluation_probability = np.clip(probabilities, 1e-12, 1.0 - 1e-12)
+            logistic_log_loss = -np.mean(
+                y_test * np.log(evaluation_probability)
+                + (1.0 - y_test) * np.log(1.0 - evaluation_probability)
             )
 
-            print("Logistic regression | probability range", (probabilities.min(), probabilities.max()))
-            print("Logistic regression | held-out accuracy", accuracy)
-            print("Logistic regression | held-out log loss", log_loss)
+            probability_range = (float(probabilities.min()), float(probabilities.max()))
+            print("Logistic regression | probability range", probability_range)
+            print("Logistic regression | held-out accuracy", logistic_accuracy)
+            print("Logistic regression | held-out log loss", logistic_log_loss)
             print("Logistic regression | first five probability/label pairs", np.column_stack([probabilities[:5], y_test[:5]]))
             """
         ),
-        md("## 3. Perceptron: update only on mistakes"),
+        md(
+            """
+            ## 3. Perceptron: update only on mistakes
+
+            **Question:** How does the perceptron move its boundary after a misclassified example?
+
+            For labels in `{-1, +1}`, the signed margin is `target * (row @ weights + bias)`. When the margin is non-positive, move both weights and bias toward the target class. A zero-mistake epoch is the natural stopping condition on linearly separable data.
+            """
+        ),
+        code(
+            """
+            class PerceptronClassifier:
+                def __init__(self, learning_rate=1.0, max_epochs=100):
+                    self.learning_rate = learning_rate
+                    self.max_epochs = max_epochs
+
+                def fit(self, X, y):
+                    X = np.asarray(X, dtype=float)
+                    y = np.asarray(y, dtype=int).reshape(-1)
+                    self.coef_ = np.zeros(X.shape[1])
+                    self.intercept_ = 0.0
+                    self.mistakes_per_epoch_ = []
+
+                    for _ in range(self.max_epochs):
+                        mistakes = 0
+                        for row, target in zip(X, y, strict=True):
+                            signed_margin = target * (row @ self.coef_ + self.intercept_)
+                            if signed_margin <= 0.0:
+                                # Update only the example currently on the wrong side.
+                                self.coef_ += self.learning_rate * target * row
+                                self.intercept_ += self.learning_rate * target
+                                mistakes += 1
+
+                        self.mistakes_per_epoch_.append(mistakes)
+                        if mistakes == 0:
+                            break
+
+                    return self
+
+                def decision_function(self, X):
+                    X = np.asarray(X, dtype=float)
+                    return X @ self.coef_ + self.intercept_
+
+                def predict(self, X):
+                    return np.where(self.decision_function(X) >= 0.0, 1, -1)
+            """
+        ),
+        md(
+            """
+            ### Fit on separable data and inspect convergence
+
+            This toy problem is deliberately separable so a zero-mistake epoch is expected. Shuffle once before the split; the algorithm itself keeps a deterministic training order so the update path can be reproduced.
+            """
+        ),
         code(
             """
             negative = rng.normal(loc=[-2.0, -2.0], scale=0.45, size=(120, 2))
             positive = rng.normal(loc=[2.0, 2.0], scale=0.45, size=(120, 2))
             X = np.vstack([negative, positive])
-            y = np.array([-1] * len(negative) + [1] * len(positive))  # This perceptron contract uses {-1, +1} labels.
-            X_train, X_test, y_train, y_test = split(X, y)
+            y = np.array([-1] * len(negative) + [1] * len(positive))
+
+            # Apply one permutation to preserve X/y row alignment.
+            perceptron_indices = rng.permutation(len(X))
+            perceptron_cut = int(0.75 * len(X))
+            train_index, test_index = (
+                perceptron_indices[:perceptron_cut],
+                perceptron_indices[perceptron_cut:],
+            )
+            X_train, X_test = X[train_index], X[test_index]
+            y_train, y_test = y[train_index], y[test_index]
 
             perceptron = PerceptronClassifier(learning_rate=1.0, max_epochs=50).fit(X_train, y_train)
-            prediction = perceptron.predict(X_test)
+            perceptron_prediction = perceptron.predict(X_test)
+            perceptron_accuracy = np.mean(perceptron_prediction == y_test)
 
             print("Perceptron | mistakes per epoch", perceptron.mistakes_per_epoch_)
-            print("Perceptron | held-out accuracy", np.mean(prediction == y_test))
-            print("Perceptron | learned coefficient/intercept", (perceptron.coef_, perceptron.intercept_))
+            print("Perceptron | held-out accuracy", perceptron_accuracy)
+            learned_boundary = (perceptron.coef_, float(perceptron.intercept_))
+            print("Perceptron | learned coefficient/intercept", learned_boundary)
             """
         ),
         md("## 4. Retrieval checks"),
         code(
             """
-            assert test_mse < 0.2
+            assert linear_test_mse < 0.2
             assert least_squares_mse < 0.2
-            assert accuracy > 0.9
-            assert np.mean(prediction == y_test) == 1.0
+            assert logistic_accuracy > 0.9
+            assert np.allclose(probability_matrix.sum(axis=1), 1.0)
+            assert perceptron_accuracy == 1.0
+            assert perceptron.mistakes_per_epoch_[-1] == 0
             assert linear.loss_history_[-1] < linear.loss_history_[0]
+            assert logistic.loss_history_[-1] < logistic.loss_history_[0]
 
             print("Algorithm checks | status", "all held-out and convergence assertions passed")
             """
