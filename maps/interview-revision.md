@@ -2,7 +2,7 @@
 type: map
 status: active
 tags: [interviews, revision, drills]
-updated: 2026-09-04
+updated: 2026-09-06
 ---
 
 # Interview Revision Map
@@ -12,7 +12,7 @@ Use retrieval practice: attempt first, inspect the reference second, then rewrit
 ## Thirty-minute emergency pass
 
 1. Predict `concatenate`, `stack`, broadcasting, and distance shapes in the [NumPy refresher](../notebooks/01-foundations/01_numpy_interview_refresher.ipynb).
-2. Rehearse missing-value repair, `concat`, `groupby().agg`, `transform`, `merge`, and time-safe `shift` in the [pandas refresher](../notebooks/01-foundations/02_pandas_interview_refresher.ipynb).
+2. Rehearse header/dtype repair, `groupby().agg` with `as_index=False`, `transform`, `pd.merge` with `validate`, time-safe `shift`, and row-versus-time rolling in the [pandas refresher](../notebooks/01-foundations/02_pandas_interview_refresher.ipynb).
 3. Recite the [[wiki/workflows/sklearn-pipelines|pipeline leakage rules]].
 4. Write the canonical [[wiki/workflows/pytorch-training-loop|PyTorch train/eval loop]] on paper.
 5. Review `ROW_NUMBER`, `LAG`, and explicit window frames in [[wiki/workflows/sql-interviews|SQL interview patterns]].
@@ -35,7 +35,7 @@ Source decision: [[sources/atlassian-ml-coding-guidance|Atlassian ML coding guid
 | Session | Retrieval target | Executable reference |
 |---|---|---|
 | 1 | shapes, combining, axes, broadcasting | [NumPy](../notebooks/01-foundations/01_numpy_interview_refresher.ipynb) |
-| 2 | missingness, concat, groupby, joins, dates | [pandas](../notebooks/01-foundations/02_pandas_interview_refresher.ipynb) |
+| 2 | inspection, repair, dedup/ranks, agg/transform, windows, dates, strings, reshape, joins | [pandas](../notebooks/01-foundations/02_pandas_interview_refresher.ipynb) |
 | 3 | linear/logistic/perceptron | [Linear models](../notebooks/02-algorithms-from-scratch/01_linear_models.ipynb) |
 | 4 | KNN/K-means | [Neighbors/clustering](../notebooks/02-algorithms-from-scratch/02_knn_kmeans.ipynb) |
 | 5 | baselines, preprocessing, and model search | [sklearn](../notebooks/03-sklearn/01_tabular_pipelines.ipynb) |

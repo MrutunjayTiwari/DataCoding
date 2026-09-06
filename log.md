@@ -2,10 +2,18 @@
 type: map
 status: active
 tags: [log, maintenance]
-updated: 2026-09-05
+updated: 2026-09-06
 ---
 
 # Activity Log
+
+## [2026-09-06] refinement | pandas refresher rebuilt from reviewer notes
+
+- Re-ingested the curated pandas recap against the 2026-09-05 review notes: added inspection, header/dtype repair, `as_index`, SQL-style ranks, lead/pct/expanding windows, time-based rolling with a validated key merge-back, calendar features, string operations, MultiIndex flattening, `concat` pitfalls, quick plots, a gotchas checklist, and drills; removed the inert `group_keys=False`, positional `.values` alignment, timezone and `Timestamp.now()` material, and the `floor("H")` alias that raises in pandas 3.
+- Switched joins to the `pd.merge` function form and paired every window idiom with its index-aligned alternative; recorded each reviewer note and its decision in [[sources/notebook-fundamentals-audit|the notebook fundamentals audit]].
+- Made dense preceding-line annotations the notebook standard in AGENTS.md (applied to the pandas refresher; NumPy and the remaining notebooks are a follow-up), documented the four notebook modes, the generator-first editing rule, and the `clear-output` tag; `run_notebooks.py` now clears tagged cells and merges stream chunks for stable diffs, and `check_vault.py` rejects embedded images.
+- Verified execution under pandas 3.0.2, 2.2.3, and 2.1.4 with identical values; kept the `pandas>=2.1` floor because the PyCaret extra pins `pandas<2.2`.
+- An independent adversarial review re-executed every cell, hand-checked the printed numbers, and corrected nine semantic statements (Copy-on-Write aliasing, chained-assignment warnings, offset-alias scope, `to_numeric` dtypes, `apply`/`transform` claims, MultiIndex assignment errors) before write-back; the NumPy refresher and the other notebooks still carry the earlier selective annotation style.
 
 ## [2026-09-05] refinement | Reader-driven notebook clarity
 

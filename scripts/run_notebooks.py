@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Execute quick notebooks and statically validate optional/heavy notebooks."""
+"""Execute quick notebooks and statically validate optional/heavy notebooks.
+
+Cells tagged ``clear-output`` keep no outputs after execution, even in quick notebooks, and
+adjacent stdout/stderr chunks are merged so re-executing a notebook yields a stable diff.
+"""
 
 from __future__ import annotations
 
@@ -10,6 +14,7 @@ import os
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+CLEAR_OUTPUT_TAG = "clear-output"
 
 
 def source_text(cell: dict) -> str:
@@ -33,6 +38,24 @@ def static_check(path: Path) -> None:
             raise SyntaxError(f"{path.relative_to(ROOT)} cell {index}: {exc}") from exc
 
 
+def coalesce_streams(outputs: list) -> list:
+    """Merge consecutive stream outputs with the same name into one output."""
+
+    merged: list = []
+    for output in outputs:
+        previous = merged[-1] if merged else None
+        if (
+            previous is not None
+            and output.get("output_type") == "stream"
+            and previous.get("output_type") == "stream"
+            and output.get("name") == previous.get("name")
+        ):
+            previous["text"] = "".join(previous.get("text", "")) + "".join(output.get("text", ""))
+        else:
+            merged.append(output)
+    return merged
+
+
 def execute(path: Path, timeout: int) -> None:
     try:
         import nbformat
@@ -51,6 +74,13 @@ def execute(path: Path, timeout: int) -> None:
     client.execute(cwd=str(ROOT))
     for cell in notebook.get("cells", []):
         cell.get("metadata", {}).pop("execution", None)
+        tags = cell.get("metadata", {}).get("tags", [])
+        if cell.get("cell_type") == "code" and CLEAR_OUTPUT_TAG in tags:
+            # Plot cells stay executable but never commit images to the vault.
+            cell["outputs"] = []
+            cell["execution_count"] = None
+        elif cell.get("cell_type") == "code":
+            cell["outputs"] = coalesce_streams(cell.get("outputs", []))
     nbformat.write(notebook, path)
 
 

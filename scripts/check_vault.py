@@ -157,6 +157,8 @@ def check_notebooks(errors: list[str]) -> None:
                     errors.append(
                         f"stored error output in {relative} cell {index}: {output.get('ename', 'error')}"
                     )
+                if any(mime.startswith("image/") for mime in output.get("data", {})):
+                    errors.append(f"embedded image output in {relative} cell {index}")
 
             code = source_text(cell)
             try:

@@ -12,6 +12,17 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
+DEFAULT_ANNOTATION = (
+    "Annotation convention: comments explain intent, shape changes, invariants, subtle API "
+    "behavior, or configuration side effects; obvious Python syntax is left uncommented."
+)
+DENSE_ANNOTATION = (
+    "Annotation convention: every consequential statement is preceded by a short comment stating "
+    "its intent, the shape or alignment it changes, the invariant it relies on, or the API "
+    "behavior that is easy to misremember; the Markdown above each cell names the question the "
+    "cell answers and the failure mode it prevents. Obvious syntax stays uncommented."
+)
+
 
 def clean(text: str) -> str:
     return textwrap.dedent(text).strip() + "\n"
@@ -41,6 +52,7 @@ def contract(
     data_policy: str,
     provenance: str,
     goal: str,
+    annotation: str = DEFAULT_ANNOTATION,
 ) -> dict:
     return md(
         f"""
@@ -55,7 +67,7 @@ def contract(
         - **Provenance:** {provenance}
 
         Output convention: every retained textual result begins with a label that identifies the operation that produced it.
-        Annotation convention: comments explain intent, shape changes, invariants, subtle API behavior, or configuration side effects; obvious Python syntax is left uncommented.
+        {annotation}
         """
     )
 
@@ -463,222 +475,848 @@ def build_pandas() -> None:
     cells = [
         contract(
             "pandas Interview Refresher",
-            study_time="40-50 minutes",
+            study_time="60-80 minutes, or the 20-minute pass in the final section",
             prerequisites="NumPy arrays and basic SQL-style grouping",
             mode="quick",
-            data_policy="no external files or downloads; a deterministic event table is created in memory",
-            provenance="rebuilt from the curated pandas interview recap notebook",
-            goal="Practice selection, missing-data repair, combination, groupby, windows, reshaping, joins, strings, and dates with traceable outputs.",
+            data_policy="no external files or downloads; one deterministic event table and one user table are built in memory",
+            provenance="rebuilt from the curated pandas interview recap notebook plus the 2026-09-05 reviewer notes; stale APIs corrected for pandas 3",
+            goal="Practice inspection, selection, dtype and missing-value repair, ranking, groupby, windows, dates, strings, reshaping, joins, and quick plots with traceable outputs.",
+            annotation=DENSE_ANNOTATION,
+        ),
+        md(
+            """
+            ## 0. Fixture
+
+            One 12-row event table (`events`) is reused by every section so intermediate values can be checked by eye; `users` is a small dimension table for joins. Text columns show the `str` dtype on pandas 3 and `object` on 2.x; every operation below behaves the same on both.
+            """
         ),
         code(
             """
             import numpy as np
             import pandas as pd
 
+            # Display only: wider rows, all columns, 3 decimals before pandas elides; data are unchanged.
+            pd.set_option("display.width", 120)
+            pd.set_option("display.max_columns", 30)
+            pd.set_option("display.precision", 3)
+
             events = pd.DataFrame(
                 {
+                    # Unique row key; also the deterministic tie-breaker in every sort below.
                     "event_id": np.arange(1, 13),
                     "user_id": [101, 101, 102, 101, 103, 102, 103, 103, 101, 102, 103, 102],
+                    # Parse once at the boundary: datetime64 sorts chronologically and unlocks .dt.
                     "timestamp": pd.to_datetime(
                         [
-                            "2026-01-01 09:00", "2026-01-01 11:00", "2026-01-01 09:30",
-                            "2026-01-02 08:00", "2026-01-02 10:15", "2026-01-03 12:00",
-                            "2026-01-03 12:30", "2026-01-04 14:00", "2026-01-05 09:00",
-                            "2026-01-05 10:00", "2026-01-05 11:00", "2026-01-06 16:00",
+                            "2026-01-01 09:00",
+                            "2026-01-01 11:00",
+                            "2026-01-01 09:30",
+                            "2026-01-02 08:00",
+                            "2026-01-02 10:15",
+                            "2026-01-03 12:00",
+                            "2026-01-03 12:30",
+                            "2026-01-04 14:00",
+                            "2026-01-05 09:00",
+                            "2026-01-05 10:00",
+                            "2026-01-05 11:00",
+                            "2026-01-06 16:00",
                         ]
                     ),
-                    "channel": ["web", "app", "web", "store", "app", "web", "store", "app", "web", "store", "web", "app"],
-                    "revenue": [20, 35, 15, 60, 10, 45, 55, 25, 80, 30, 50, 70],
-                    "note": [f"order_id=ORD-{value:03d}" for value in range(1, 13)],
+                    "channel": [
+                        "web",
+                        "app",
+                        "web",
+                        "store",
+                        "app",
+                        "web",
+                        "store",
+                        "app",
+                        "web",
+                        "store",
+                        "web",
+                        "app",
+                    ],
+                    # User 103 has a revenue tie (55, 55) so ranking and top-k-unique differ visibly.
+                    "revenue": [20, 35, 15, 60, 10, 45, 55, 25, 80, 30, 55, 70],
+                    "quantity": [1, 2, 1, 3, 1, 2, 2, 1, 4, 1, 2, 3],
+                    # Free text with one missing value: exercises contains(na=...), extract, split.
+                    "note": [
+                        "order_id=ORD-001 refund requested",
+                        "order_id=ORD-002",
+                        "order_id=ORD-003 gift wrap",
+                        "order_id=ORD-004",
+                        "order_id=ORD-005 REFUND issued",
+                        "order_id=ORD-006",
+                        "order_id=ORD-007 express",
+                        None,
+                        "order_id=ORD-009",
+                        "order_id=ORD-010 refund",
+                        "order_id=ORD-011",
+                        "order_id=ORD-012 gift wrap",
+                    ],
                 }
             )
+            users = pd.DataFrame(
+                {
+                    # User 104 has no events: exercises unmatched keys in the join audit.
+                    "user_id": [101, 102, 103, 104],
+                    "segment": ["growth", "core", "growth", "new"],
+                    # Same column name as events.channel: forces an explicit suffixes decision in merge.
+                    "channel": ["web", "app", "store", "web"],
+                }
+            )
+            # Copy-on-Write remarks below assume pandas >= 3; every operation also runs on pandas 2.1+.
+            print("Environment | pandas version", pd.__version__)
             print("Source | event table", events)
-            print("Source | shape and dtypes", (events.shape, events.dtypes.astype(str).to_dict()))
+            print("Source | user table", users)
             """
         ),
-        md("## 1. `loc`, `iloc`, and safe assignment"),
+        md(
+            """
+            ## 1. Inspect before transforming
+
+            Question: what is one row, which column identifies it, and where are the gaps? Failure mode prevented: aggregating or joining on the wrong grain. `df.info()` bundles dtypes, non-null counts, and memory into one unlabeled block; the pieces below keep each fact labeled.
+            """
+        ),
         code(
             """
+            # Grain check: a candidate key has as many distinct values as rows.
+            key_is_unique = events["event_id"].is_unique
+            # Numeric summary of measure columns only; include="all" would add top/freq for text.
+            numeric_summary = events[["revenue", "quantity"]].describe()
+
+            print("Inspect | event_id is unique", key_is_unique)
+            print("Inspect | shape (rows, columns)", events.shape)
+            print("Inspect | head(3)", events.head(3))
+            # random_state fixes which rows are drawn, so the sample is reproducible across runs.
+            print("Inspect | seeded sample(3)", events.sample(3, random_state=0))
+            # dtypes decide which operations exist: .dt needs datetime64, .str needs text, sum needs numbers.
+            print("Inspect | dtypes", events.dtypes.astype(str).to_dict())
+            # isna().sum() counts gaps per column; nunique() shows cardinality (a key has len(events) values).
+            print("Inspect | missing per column", events.isna().sum().to_dict())
+            print("Inspect | distinct per column", events.nunique().to_dict())
+            print("Inspect | numeric summary", numeric_summary)
+            """
+        ),
+        md(
+            """
+            ## 2. `loc`, `iloc`, and boolean masks
+
+            Question: how do I select rows and columns by label, by position, or by condition? `loc` is label/mask based and label slices are inclusive; `iloc` is position based and end-exclusive. Combine masks with `&`/`|` and parentheses, because those operators bind tighter than comparisons. Failure mode prevented: `df["a"] > 1 & df["b"] < 2` parses as `df["a"] > (1 & df["b"]) < 2` and fails with a confusing "truth value of a Series is ambiguous" error.
+            """
+        ),
+        code(
+            """
+            # loc: boolean mask for rows, list for columns; the list keeps the result a DataFrame.
             high_value = events.loc[events["revenue"] >= 50, ["event_id", "user_id", "revenue"]]
-            high_value_web = events.loc[
-                (events["revenue"] >= 50) & (events["channel"] == "web"),  # Parenthesize each mask around & / |.
+            # iloc: half-open positional slices [start, stop) on both axes, independent of labels.
+            positional = events.iloc[:3, :4]
+            # Parenthesize each condition; & binds tighter than >=, and isin returns a mask.
+            web_or_app_big = events.loc[
+                (events["revenue"] >= 50) & events["channel"].isin(["web", "app"]),
                 ["event_id", "channel", "revenue"],
             ]
-            positional = events.iloc[:3, :4]
-            labeled = events.copy()  # Make ownership explicit before adding a column.
-            labeled.loc[labeled["revenue"] >= 50, "value_band"] = "high"
-            labeled.loc[labeled["revenue"] < 50, "value_band"] = "regular"
+            # between is inclusive on both ends; a single column label returns a Series.
+            mid_range_ids = events.loc[events["revenue"].between(30, 60), "event_id"].tolist()
+            # Label slices with loc include the end label; positional slices with iloc do not.
+            label_slice_rows = len(events.loc[2:4])
+            position_slice_rows = len(events.iloc[2:4])
 
             print("Selection | loc revenue >= 50", high_value)
-            print("Selection | parenthesized AND mask", high_value_web)
             print("Selection | iloc first 3 rows and 4 columns", positional)
-            print("Assignment | value_band counts", labeled["value_band"].value_counts())
+            print("Selection | compound mask with isin", web_or_app_big)
+            print("Selection | between(30, 60) event ids", mid_range_ids)
+            print("Selection | rows from loc[2:4] versus iloc[2:4]", (label_slice_rows, position_slice_rows))
             """
         ),
         md(
             """
-            ## 2. Missing values and dtype repair
+            ## 3. Assignment under Copy-on-Write
 
-            Audit missingness before choosing a policy. Coerce dirty numeric text with `errors="coerce"`, impute features only from training data, and normally drop rather than impute a missing supervised target.
+            Question: how do I write a new or updated column without touching a temporary copy? pandas 3 enables Copy-on-Write: a derived frame never writes back to its parent, and chained assignment `df[mask]["col"] = v` never reaches the parent (pandas 3 warns with `ChainedAssignmentError`, 2.x warned with `SettingWithCopyWarning`). The reversed form `df["col"][mask] = v` could write through on 2.x and is likewise a no-op on 3. Failure mode prevented: an update that appears to succeed but lands in a temporary. Write with one `.loc[rows, column] = value` on the frame you mean to change; whole-column expressions assign directly.
             """
         ),
         code(
             """
-            messy = events.copy()
-            messy.loc[2, "revenue"] = np.nan
-            messy.loc[5, "channel"] = None
-            messy["revenue_text"] = messy["revenue"].astype("string")
-            messy.loc[4, "revenue_text"] = "unknown"
+            import warnings
 
-            numeric_revenue = pd.to_numeric(messy["revenue_text"], errors="coerce")  # Invalid text becomes NaN for audit/repair.
-            cleaned = messy.copy()
-            cleaned["revenue"] = numeric_revenue.fillna(numeric_revenue.median())  # In ML, learn this fill value on training rows only.
-            cleaned["channel"] = messy["channel"].fillna("unknown")
-            print("Missing data | counts before repair", messy.isna().sum())
-            print("Dtype repair | coerced invalid numeric values", numeric_revenue.head(6))
-            print("Missing data | counts after selected repairs", cleaned.isna().sum())
+            # copy() states intent: a derived frame such as events[:] would not write back under Copy-on-Write,
+            # but a plain alias (labeled = events) is the same object and would.
+            labeled = events.copy()
+            # One .loc call selects the rows and the target column; a new column starts as NaN elsewhere.
+            labeled.loc[labeled["revenue"] >= 50, "value_band"] = "high"
+            labeled.loc[labeled["revenue"] < 50, "value_band"] = "regular"
+            # Whole-column arithmetic needs no .loc; the two columns align by index.
+            labeled["revenue_per_unit"] = labeled["revenue"] / labeled["quantity"]
+
+            # Counterexample: chained assignment writes into a temporary, and the parent is untouched.
+            chained = events.copy()
+            with warnings.catch_warnings():
+                # Silence ChainedAssignmentError (pandas 3) / SettingWithCopyWarning (2.x) for this demo only.
+                warnings.simplefilter("ignore")
+                chained[chained["revenue"] >= 50]["channel"] = "big"
+            parent_changed = bool((chained["channel"] == "big").any())
+
+            print("Assignment | value_band counts", labeled["value_band"].value_counts().to_dict())
+            print("Assignment | revenue_per_unit head", labeled["revenue_per_unit"].head(3).tolist())
+            print("Assignment | events untouched by the copy", "value_band" not in events.columns)
+            print("Assignment | chained assignment changed the parent?", parent_changed)
             """
         ),
         md(
             """
-            ## 3. Concatenating compatible tables
+            ## 4. Column hygiene and dtype repair
 
-            `concat` appends already-compatible tables along an axis; it does not match rows by key. Here the original table is split and rebuilt by rows. `ignore_index=True` replaces the two inherited index fragments with one continuous index.
+            Question: how do I turn an export with padded headers, numbers-as-text, and bad timestamps into typed columns? `errors="coerce"` converts unparseable values to `NaN`/`NaT` instead of raising, which makes the damage visible and countable. Failure mode prevented: silently keeping a numeric column as text so `sum()` concatenates or fails.
             """
         ),
         code(
             """
-            first_rows = events.iloc[:5]
-            remaining_rows = events.iloc[5:]
-            recombined = pd.concat([first_rows, remaining_rows], ignore_index=True)
+            # Simulate an export: padded headers, numbers as text, one corrupt timestamp, one missing label.
+            raw = events.rename(columns={"event_id": " Event ID ", "revenue": "Revenue (USD)"})
+            raw["Revenue (USD)"] = raw["Revenue (USD)"].astype(str)
+            raw.loc[4, "Revenue (USD)"] = "unknown"
+            raw["timestamp"] = raw["timestamp"].astype(str)
+            raw.loc[7, "timestamp"] = "not a time"
+            raw.loc[5, "channel"] = None
 
-            print("Concat | input shapes", (first_rows.shape, remaining_rows.shape))
-            print("Concat | row-wise result shape", recombined.shape)
-            print("Concat | rows around the join point", recombined.iloc[3:7])
+            repaired = raw.copy()
+            # Normalize headers once: ' Event ID ' -> 'event_id', 'Revenue (USD)' -> 'revenue_usd'.
+            repaired.columns = (
+                repaired.columns.str.strip()
+                .str.lower()
+                .str.replace(r"[^0-9a-z]+", "_", regex=True)
+                .str.strip("_")
+            )
+            # Targeted rename after the bulk normalization; keys that do not exist are ignored.
+            repaired = repaired.rename(columns={"revenue_usd": "revenue"})
+            # Unparseable text -> NaN instead of an exception; the NaN forces float64 (all-parseable text
+            # would give int64).
+            repaired["revenue"] = pd.to_numeric(repaired["revenue"], errors="coerce")
+            # Unparseable text -> NaT; datetime64 makes sorting chronological and enables .dt.
+            repaired["timestamp"] = pd.to_datetime(repaired["timestamp"], errors="coerce")
+            # Repeated labels become integer codes plus a categories index; NaN stays NaN, not a level.
+            repaired["channel"] = repaired["channel"].astype("category")
+            # Drop by name; errors="ignore" would tolerate absent columns.
+            repaired = repaired.drop(columns=["note"])
+            # Rows where any coercion produced a missing value: the audit trail of the repair.
+            damaged = repaired.loc[repaired[["revenue", "timestamp", "channel"]].isna().any(axis=1)]
+
+            print("Repair | normalized column names", repaired.columns.tolist())
+            print("Repair | dtypes after coercion", repaired.dtypes.astype(str).to_dict())
+            print("Repair | rows with coerced NaN/NaT", damaged[["event_id", "timestamp", "channel", "revenue"]])
+            print(
+                "Repair | category levels and first codes",
+                (repaired["channel"].cat.categories.tolist(), repaired["channel"].cat.codes.head(6).tolist()),
+            )
             """
         ),
-        md("## 4. Sorting, deduplication, and top-k per group"),
+        md(
+            """
+            ## 5. Missing data: audit, then choose a policy per column
+
+            Question: how much is missing, and should each gap be dropped, filled, or kept? Rules: drop rows whose key fields cannot be repaired; learn fill values on training rows only and reuse them unchanged elsewhere; never impute a missing supervised target. `value_counts()` and `count()` skip missing values by default, so audits use `dropna=False` and `size`; `groupby` likewise drops missing keys unless `dropna=False`. Failure mode prevented: a fill value learned on the whole table leaking test-period information, and a missing target turned into a fake label.
+            """
+        ),
         code(
             """
+            # Fraction missing per column; .sum() would give counts instead.
+            missing_share = repaired.isna().mean().round(3)
+            # Drop rows whose key field could not be repaired; subset limits the test to named columns.
+            key_complete = repaired.dropna(subset=["timestamp"])
+            # Stand-in for a chronological training split: sort by time, take the earliest rows, and learn
+            # statistics there only.
+            train_rows = key_complete.sort_values("timestamp").iloc[:8]
+            fill_value = train_rows["revenue"].median()
+            # assign returns a new frame, so the unrepaired frame stays available for the audit prints.
+            imputed = key_complete.assign(
+                revenue=key_complete["revenue"].fillna(fill_value),
+                # A categorical accepts only existing levels, so add the level before filling.
+                channel=key_complete["channel"].cat.add_categories(["unknown"]).fillna("unknown"),
+            )
+            cells_missing_before = int(repaired.isna().sum().sum())
+            cells_missing_after = int(imputed.isna().sum().sum())
+            # groupby drops rows whose key is missing unless dropna=False keeps them as their own group.
+            with_missing_key = repaired.assign(user_id=repaired["user_id"].where(repaired["event_id"] != 8))
+            groups_default = with_missing_key.groupby("user_id")["revenue"].sum()
+            groups_keep_nan = with_missing_key.groupby("user_id", dropna=False)["revenue"].sum()
+
+            print("Missing | share per column", missing_share.to_dict())
+            print("Missing | cells missing before/after", (cells_missing_before, cells_missing_after))
+            # value_counts drops NaN unless dropna=False; count() skips NaN while size counts every row.
+            print("Missing | channel counts including NaN", repaired["channel"].value_counts(dropna=False).to_dict())
+            print("Missing | revenue count() versus size", (int(repaired["revenue"].count()), int(repaired["revenue"].size)))
+            print("Missing | fill value learned on training rows", fill_value)
+            print("Missing | rows dropped for unrepairable timestamp", len(repaired) - len(key_complete))
+            print("Missing | groupby group count with dropna=True versus dropna=False", (len(groups_default), len(groups_keep_nan)))
+            """
+        ),
+        md(
+            """
+            ## 6. Sorting, deduplication, and top-k per group
+
+            Question: which row is the latest per user, and which k rows lead each group? Sort with an explicit tie-breaker so results are deterministic. `groupby().head(k)` keeps the first k rows per group on the original index; it is a filter, so `group_keys` does not apply (section 10). Dedupe values before `head` when k must count distinct values rather than rows. Failure mode prevented: a nondeterministic winner when revenues tie.
+            """
+        ),
+        code(
+            """
+            # Sort keys apply left to right; event_id breaks timestamp ties deterministically.
             latest_per_user = (
-                events.sort_values(["user_id", "timestamp", "event_id"])  # event_id resolves timestamp ties deterministically.
-                .drop_duplicates("user_id", keep="last")                  # Sorted last row is the latest per user.
+                events.sort_values(["user_id", "timestamp", "event_id"])
+                # After sorting, keep="last" retains the newest row of each user.
+                .drop_duplicates("user_id", keep="last")
                 .sort_values("user_id")
             )
-            top_two = (
-                events.sort_values(["user_id", "revenue"], ascending=[True, False])  # Put each group's winners first.
-                .groupby("user_id", group_keys=False)
-                .head(2)
+            # Mixed directions: one ascending flag per key; event_id fixes the order of tied revenues.
+            by_user_then_revenue = events.sort_values(
+                ["user_id", "revenue", "event_id"], ascending=[True, False, True]
+            )
+            # head(k) keeps each group's first k rows on the original index; user 103 keeps both 55s.
+            top_two = by_user_then_revenue.groupby("user_id").head(2)
+            # Collapse equal revenue values first so k counts distinct values: user 103 keeps 55 and 25.
+            top_two_unique = (
+                by_user_then_revenue.drop_duplicates(["user_id", "revenue"]).groupby("user_id").head(2)
             )
 
             print("Dedup | latest event per user", latest_per_user[["user_id", "event_id", "timestamp"]])
-            print("Ranking | top 2 revenue events per user", top_two[["user_id", "event_id", "revenue"]])
+            print("Top-k | top 2 revenue events per user", top_two[["user_id", "event_id", "revenue"]])
+            print(
+                "Top-k | top 2 distinct revenue values per user",
+                top_two_unique[["user_id", "event_id", "revenue"]],
+            )
             """
         ),
-        md("## 5. `agg` reduces rows; `transform` preserves rows"),
+        md(
+            """
+            ## 7. SQL-style ranks: `cumcount` and `rank`
+
+            Question: how do I number rows inside a group or rank values with ties? `cumcount()` is `ROW_NUMBER` (0-based; add 1); `rank(method="dense")` is `DENSE_RANK`, `method="min"` is `RANK` with gaps, and `method="first"` breaks ties by order of appearance. Failure mode prevented: reporting a tie as two different ranks by accident.
+            """
+        ),
         code(
             """
-            user_summary = events.groupby("user_id").agg(  # Collapse to one row per user.
+            ranked = by_user_then_revenue.copy()
+            # ROW_NUMBER: position inside the sorted group starting at 1; tied values get different numbers.
+            ranked["row_number"] = ranked.groupby("user_id").cumcount() + 1
+            # DENSE_RANK on revenue: ties share a rank and no rank is skipped.
+            ranked["dense_rank"] = (
+                ranked.groupby("user_id")["revenue"].rank(method="dense", ascending=False).astype(int)
+            )
+            # RANK: ties share a rank and the next rank is skipped (1, 1, 3, ...).
+            ranked["rank_with_gaps"] = (
+                ranked.groupby("user_id")["revenue"].rank(method="min", ascending=False).astype(int)
+            )
+            # method="first": ties are broken by order of appearance, so every rank is distinct.
+            ranked["first_rank"] = (
+                ranked.groupby("user_id")["revenue"].rank(method="first", ascending=False).astype(int)
+            )
+
+            print(
+                "Rank | user 103 with a tie at 55",
+                ranked.loc[
+                    ranked["user_id"] == 103,
+                    ["event_id", "revenue", "row_number", "dense_rank", "rank_with_gaps", "first_rank"],
+                ],
+            )
+            """
+        ),
+        md(
+            """
+            ## 8. `groupby().agg`: named aggregation, `as_index`, and MultiIndex columns
+
+            Question: one row per user with several statistics, and what shape do the headers take? Named aggregation (`new_name=(column, function)`) yields flat headers. `as_index=False` keeps the key as a column (same as `.reset_index()` afterwards). The dict-of-lists form yields two-level `(column, function)` headers that must be flattened before code addresses columns by name. `size` counts rows and `count` skips missing values. Failure mode prevented: code that indexes `frame["revenue"]` after a dict-of-lists `agg` and hits a tuple-keyed MultiIndex.
+            """
+        ),
+        code(
+            """
+            # One output row per group; the grouping key becomes the index by default.
+            user_summary = events.groupby("user_id").agg(
+                # Named aggregation: new_name=(column, function). size counts rows; count skips NaN.
                 event_count=("event_id", "size"),
                 total_revenue=("revenue", "sum"),
                 mean_revenue=("revenue", "mean"),
+                last_seen=("timestamp", "max"),
             )
+            # as_index=False keeps user_id as a column: the same as .reset_index() on the frame above.
+            user_summary_flat = events.groupby("user_id", as_index=False).agg(
+                event_count=("event_id", "size"), total_revenue=("revenue", "sum")
+            )
+            # Dict-of-lists form: two-level (column, function) headers.
+            multi_stat = events.groupby("user_id").agg({"revenue": ["sum", "mean"], "quantity": "sum"})
+            two_level_headers = multi_stat.columns.tolist()
+            # Flatten the tuples to 'revenue_sum' style names so downstream code can use plain strings.
+            multi_stat.columns = ["_".join(col) for col in multi_stat.columns]
+
+            print("Groupby agg | named aggregation, key in the index", user_summary)
+            print("Groupby agg | as_index=False keeps the key as a column", user_summary_flat)
+            print("Groupby agg | dict-of-lists headers before flattening", two_level_headers)
+            print("Groupby agg | flattened headers", multi_stat)
+            """
+        ),
+        md(
+            """
+            ## 9. `transform` keeps every row
+
+            Question: how do I attach a group statistic to each row, or normalize within a group, without a join? `transform` returns one value per original row on the original index, so the result assigns directly and can be combined with the source column by plain arithmetic. Failure mode prevented: merging an aggregate back and multiplying rows.
+            """
+        ),
+        code(
+            """
             with_group_features = events.copy()
-            with_group_features["user_mean_revenue"] = events.groupby("user_id")["revenue"].transform("mean")  # Broadcast one group statistic back to every event.
-            with_group_features["above_user_mean"] = (
-                with_group_features["revenue"] > with_group_features["user_mean_revenue"]
+            # One value per original row: each event receives its user's mean; alignment is by index.
+            with_group_features["user_mean_revenue"] = with_group_features.groupby("user_id")["revenue"].transform("mean")
+            # Row-aligned arithmetic between a column and its transform needs no join.
+            with_group_features["revenue_vs_user_mean"] = (
+                with_group_features["revenue"] - with_group_features["user_mean_revenue"]
             )
-
-            print("Groupby agg | one row per user", user_summary)
-            print(
-                "Groupby transform | row-aligned feature sample",
-                with_group_features[["event_id", "user_id", "revenue", "user_mean_revenue", "above_user_mean"]].head(8),
-            )
-            """
-        ),
-        md("## 6. Time ordering, shift, gaps, and lagged rolling features"),
-        code(
-            """
-            ordered = events.sort_values(["user_id", "timestamp", "event_id"]).copy()  # Temporal operations require explicit order.
-            ordered["previous_timestamp"] = ordered.groupby("user_id")["timestamp"].shift(1)  # Never cross user boundaries.
-            ordered["gap_hours"] = (
-                ordered["timestamp"] - ordered["previous_timestamp"]
-            ).dt.total_seconds() / 3600
-            ordered["previous_revenue"] = ordered.groupby("user_id")["revenue"].shift(1)  # Lag before rolling to exclude the current event.
-            ordered["prior_two_mean"] = (
-                ordered.groupby("user_id")["previous_revenue"]
-                .rolling(2, min_periods=1)  # Emit an early value when only one prior event exists.
-                .mean()
-                .reset_index(level=0, drop=True)  # Remove the group level so values align to ordered's index.
-            )
-            ordered["month"] = ordered["timestamp"].dt.to_period("M")  # Calendar month period, not a formatted display string.
+            # Group-normalized feature in one expression: share of the user's total revenue.
+            user_total = with_group_features.groupby("user_id")["revenue"].transform("sum")
+            with_group_features["user_revenue_share"] = with_group_features["revenue"] / user_total
+            # A boolean per row from a group statistic: is this event above its user's mean?
+            with_group_features["above_user_mean"] = with_group_features["revenue_vs_user_mean"] > 0
 
             print(
-                "Time features | previous event, gap, lagged rolling mean",
-                ordered[["user_id", "timestamp", "revenue", "gap_hours", "prior_two_mean"]],
+                "Groupby transform | row-aligned features",
+                with_group_features[
+                    ["event_id", "user_id", "revenue", "user_mean_revenue", "revenue_vs_user_mean", "user_revenue_share", "above_user_mean"]
+                ],
             )
             """
         ),
-        md("## 7. Strings and categorical cleanup"),
-        code(
+        md(
             """
-            string_features = events[["event_id", "note", "channel"]].copy()
-            string_features["order_id"] = string_features["note"].str.extract(r"(ORD-\\d+)")  # The capture group becomes the new column.
-            string_features["channel"] = string_features["channel"].astype("category")  # Store repeated labels as categorical levels.
+            ## 10. `group_keys` matters only for `apply`
 
-            print("Strings | extracted order identifiers", string_features.head(6))
-            print("Categorical | channel categories", string_features["channel"].cat.categories.tolist())
+            Question: what does `group_keys` change? It controls whether `apply` prepends the group key to its output index; `agg`, `transform`, `head`, and `filter` ignore it. Prefer `agg`/`transform` over `apply`: with built-in names (`"sum"`, `"mean"`) they run in compiled code, and their output shape is fixed (one row per group, or one row per input row), whereas `apply` decides its shape at run time. Failure mode prevented: assigning `apply` output back to the frame and hitting `TypeError: incompatible index of inserted column with frame index` because the index gained a level. Reach for `apply` only when a per-group function has no vectorized equivalent, and then pick `group_keys` by whether the result must assign back to the original rows.
             """
         ),
-        md("## 8. Pivot, pivot table, and melt"),
         code(
             """
-            revenue_matrix = events.pivot_table(  # Aggregate duplicate user/channel pairs while widening.
+            # apply with group_keys=True (default): the group key is prepended to the output index.
+            keyed = events.groupby("user_id", group_keys=True)[["event_id", "revenue"]].apply(
+                lambda group: group.nlargest(1, "revenue")
+            )
+            # group_keys=False: only the original row index survives, so the result assigns back cleanly.
+            unkeyed = events.groupby("user_id", group_keys=False)[["event_id", "revenue"]].apply(
+                lambda group: group.nlargest(1, "revenue")
+            )
+            # head() is a filter on the original index whichever way group_keys is set.
+            head_keyed = events.groupby("user_id", group_keys=True).head(1).index.tolist()
+            head_unkeyed = events.groupby("user_id", group_keys=False).head(1).index.tolist()
+
+            print("group_keys | apply output index with group_keys=True", keyed.index.tolist())
+            print("group_keys | apply output index with group_keys=False", unkeyed.index.tolist())
+            print("group_keys | head(1) index is unaffected", (head_keyed, head_unkeyed))
+            """
+        ),
+        md(
+            """
+            ## 11. Ordered windows I: `shift`, deltas, percent change, running totals
+
+            Question: how does each event compare with the previous one for the same user? Sort explicitly once, then compute every window inside `groupby("user_id")` so nothing crosses a user boundary. `shift(1)` is SQL `LAG`, `shift(-1)` is `LEAD`; both give NaN at group edges. `cumsum` and `expanding` are cumulative windows from the first row. Failure mode prevented: leaking the next user's first event into this user's last row.
+            """
+        ),
+        code(
+            """
+            # Every window below assumes this order; sort once and keep the frame.
+            ordered = events.sort_values(["user_id", "timestamp", "event_id"]).copy()
+            # Reusable grouper over the source columns; windows never cross a user boundary.
+            by_user = ordered.groupby("user_id")
+            # LAG(1): previous row inside the user; the first row per user becomes NaN.
+            ordered["previous_revenue"] = by_user["revenue"].shift(1)
+            # LEAD(1): next row inside the user; the last row per user becomes NaN.
+            ordered["next_revenue"] = by_user["revenue"].shift(-1)
+            ordered["revenue_delta"] = ordered["revenue"] - ordered["previous_revenue"]
+            # (current / previous) - 1 per user; a zero previous value gives inf, so guard before modelling.
+            ordered["revenue_pct_change"] = by_user["revenue"].pct_change()
+            # Running total up to and including the current row.
+            ordered["cumulative_revenue"] = by_user["revenue"].cumsum()
+            # expanding: cumulative mean from each user's first row through the current row.
+            ordered["expanding_mean"] = by_user["revenue"].transform(lambda revenue: revenue.expanding().mean())
+            # Timedelta -> float hours; NaN on each user's first row.
+            ordered["gap_hours"] = (ordered["timestamp"] - by_user["timestamp"].shift(1)).dt.total_seconds() / 3600
+
+            print(
+                "Windows | lag, lead, delta, pct change",
+                ordered[["user_id", "timestamp", "revenue", "previous_revenue", "next_revenue", "revenue_delta", "revenue_pct_change"]],
+            )
+            print(
+                "Windows | running total, expanding mean, gap hours",
+                ordered[["user_id", "timestamp", "revenue", "cumulative_revenue", "expanding_mean", "gap_hours"]],
+            )
+            """
+        ),
+        md(
+            """
+            ## 12. Ordered windows II: row-based rolling, two aligned ways
+
+            Question: what is the trailing k-row mean per user, and how do I get it back onto the frame? Two idioms give identical values: `transform(lambda s: s.rolling(k).mean())` keeps the original index and assigns directly but runs one Python call per group; `groupby().rolling(k).mean()` is the vectorized fast path but returns a `(user_id, original_index)` MultiIndex that must be dropped first. Lag before rolling when the feature must exclude the current row. Failure mode prevented: assigning the `(user_id, index)`-indexed result to the frame, which raises `TypeError: incompatible index of inserted column with frame index`; drop the key level first so values align by row label.
+            """
+        ),
+        code(
+            """
+            # Idiom A: transform keeps ordered's index, so the result assigns directly; one call per group.
+            via_transform = ordered.groupby("user_id")["revenue"].transform(
+                lambda revenue: revenue.rolling(3, min_periods=1).mean()
+            )
+            # Idiom B: vectorized groupby-rolling; the window is the last 3 rows whatever their timestamps.
+            raw_groupby_rolling = ordered.groupby("user_id")["revenue"].rolling(3, min_periods=1).mean()
+            # Its index is (user_id, original index); drop level 0 to realign with ordered.
+            via_groupby_rolling = raw_groupby_rolling.reset_index(level=0, drop=True)
+            ordered["trailing_three_mean"] = via_transform
+            # Lag first, then roll: the window excludes the current row and cannot leak the value it predicts.
+            ordered["prior_two_mean"] = ordered.groupby("user_id")["previous_revenue"].transform(
+                lambda previous: previous.rolling(2, min_periods=1).mean()
+            )
+
+            print("Rolling | both idioms agree", via_transform.equals(via_groupby_rolling))
+            print("Rolling | raw groupby-rolling index before reset_index", raw_groupby_rolling.index[:3].tolist())
+            print(
+                "Rolling | trailing 3-row mean and lagged 2-row mean",
+                ordered[["user_id", "timestamp", "revenue", "trailing_three_mean", "prior_two_mean"]],
+            )
+            """
+        ),
+        md(
+            """
+            ## 13. Ordered windows III: time-based rolling
+
+            Question: revenue in the trailing 2 days rather than the trailing 2 rows? `rolling("2D")` needs a `DatetimeIndex` or `on=` and includes rows whose timestamps fall in `(t - 2 days, t]`; for sparse events it can shrink to a single row in the middle of a series, where `rolling(3)` holds the last three rows once three exist. Its result is indexed by `(user_id, timestamp)`, so the values cannot be assigned positionally: join them back on those keys with a validated merge rather than `.values`, which is silently wrong whenever row order differs. Failure mode prevented: a feature column shifted against the wrong rows.
+            """
+        ),
+        code(
+            """
+            # Time window over the sorted timestamps inside each user; on= names the time column.
+            two_day_sum = ordered.groupby("user_id").rolling("2D", on="timestamp")["revenue"].sum()
+            # The result is keyed by (user_id, timestamp), not by ordered's row index.
+            two_day_frame = two_day_sum.rename("revenue_2d_sum").reset_index()
+            # Join back on the keys; one_to_one asserts (user_id, timestamp) is unique on both sides.
+            # merge returns a new frame with a fresh 0..n-1 index, so ordered is rebound here.
+            ordered = pd.merge(
+                ordered, two_day_frame, on=["user_id", "timestamp"], how="left", validate="one_to_one"
+            )
+
+            print("Time window | rolling('2D') result index names", two_day_sum.index.names)
+            print(
+                "Time window | 2-day sum versus 3-row mean on sparse events",
+                ordered[["user_id", "timestamp", "revenue", "revenue_2d_sum", "trailing_three_mean"]],
+            )
+            """
+        ),
+        md(
+            """
+            ## 14. Datetime features and calendar buckets
+
+            Question: which calendar features does an event carry, and how do I aggregate by calendar day without losing empty days? `.dt.date` gives Python `date` objects (fine as keys, slow for arithmetic); `.dt.normalize()` keeps a `Timestamp` at midnight; `floor("h")` truncates to the hour (sub-daily aliases are lowercase; `"H"` raises in pandas 3); `to_period("W")`/`("M")` are calendar buckets, not rolling windows; `dayofweek` is Monday=0. `resample("D")` on a `DatetimeIndex` or `on=` column (or `pd.Grouper(key=..., freq="D")`) keeps empty days as rows (0 for `sum`/`count`/`nunique`, NaN for `mean`), whereas grouping by `normalize()` drops them. Failure mode prevented: confusing a calendar week bucket with a trailing 7-day window, and a daily series that silently skips days.
+            """
+        ),
+        code(
+            """
+            stamps = ordered[["user_id", "timestamp"]].copy()
+            # Python date objects (object dtype): usable as a group key, slow for arithmetic.
+            stamps["date"] = stamps["timestamp"].dt.date
+            # Same calendar day as a Timestamp at 00:00: keeps datetime arithmetic and .dt available.
+            stamps["day"] = stamps["timestamp"].dt.normalize()
+            # Truncate to the hour ('h' lowercase; 'H' raises in pandas 3).
+            stamps["hour_bucket"] = stamps["timestamp"].dt.floor("h")
+            # 0-23 feature; unlike hour_bucket it forgets the date.
+            stamps["hour_of_day"] = stamps["timestamp"].dt.hour
+            # Monday=0 ... Sunday=6.
+            stamps["day_of_week"] = stamps["timestamp"].dt.dayofweek
+            stamps["is_weekend"] = stamps["day_of_week"].isin([5, 6])
+            # Calendar week bucket (Mon-Sun by default), not a trailing 7-day window.
+            stamps["week_start"] = stamps["timestamp"].dt.to_period("W").dt.start_time
+            # Period dtype: sorts chronologically and prints as 2026-01.
+            stamps["month"] = stamps["timestamp"].dt.to_period("M")
+            # resample needs a DatetimeIndex or on=; sum() emits 0 for empty days (user 101 has none on
+            # Jan 3-4), whereas groupby(normalize()) would drop those days entirely.
+            user_101_daily = (
+                ordered.loc[ordered["user_id"] == 101].set_index("timestamp")["revenue"].resample("D").sum()
+            )
+
+            print("Datetime | calendar buckets", stamps[["timestamp", "date", "day", "hour_bucket", "week_start", "month"]])
+            print("Datetime | scalar features", stamps[["timestamp", "hour_of_day", "day_of_week", "is_weekend"]])
+            print("Datetime | daily revenue for user 101 including empty days", user_101_daily)
+            """
+        ),
+        md(
+            """
+            ## 15. Session-style logic: first event of the day, cutoffs, daily actives
+
+            Question: is this the user's first event today, which events fall in the recent window, and how many distinct users were active per day? Comparisons with `NaT` are False, so date filters drop unparseable rows automatically. A fixed cutoff keeps the notebook deterministic; production code computes it from `pd.Timestamp.now()`. Failure mode prevented: a first-event flag computed across users, and a non-deterministic cutoff in a revision notebook.
+            """
+        ),
+        code(
+            """
+            # Previous event's calendar day inside the same user; NaT on each user's first row.
+            previous_day = ordered.groupby("user_id")["timestamp"].shift(1).dt.normalize()
+            # True when the day changes; NaT != day is True, so the first row per user counts as a first event.
+            ordered["first_event_of_day"] = ordered["timestamp"].dt.normalize().ne(previous_day)
+            # Fixed cutoff for determinism; production: pd.Timestamp.now() - pd.Timedelta(days=7).
+            cutoff = pd.Timestamp("2026-01-04")
+            # Timestamp comparison yields a mask; NaT compares False and is excluded automatically.
+            recent = ordered.loc[ordered["timestamp"] >= cutoff, ["event_id", "user_id", "timestamp"]]
+            # Daily active users: distinct users per calendar day; grouping by a Series works like a column.
+            daily_active_users = ordered.groupby(ordered["timestamp"].dt.normalize())["user_id"].nunique()
+            # NaT never satisfies >=, so the unrepairable row from section 4 drops out of the filter by itself.
+            repaired_recent_count = int((repaired["timestamp"] >= cutoff).sum())
+            nat_event_ids = repaired.loc[repaired["timestamp"].isna(), "event_id"].tolist()
+
+            print("Sessions | first event of the day per user", ordered[["user_id", "timestamp", "first_event_of_day"]])
+            print("Sessions | events on or after the cutoff", recent)
+            print("Sessions | daily active users", daily_active_users)
+            print("Sessions | repaired rows kept by the cutoff and the NaT event ids", (repaired_recent_count, nat_event_ids))
+            """
+        ),
+        md(
+            """
+            ## 16. String operations with `.str`
+
+            Question: how do I flag, extract, split, and clean text columns without loops? `contains(na=False)` turns missing text into False so the mask is usable in `loc`; `extract` with one capture group and `expand=False` returns a Series; `split(expand=True)` spreads pieces into columns; `replace(regex=True)` strips characters before a cast. Nullable `Int64` keeps a missing extraction as `<NA>` instead of forcing floats. Failure mode prevented: a NaN inside a boolean mask breaking `loc`, and a float column of order numbers because one value was missing.
+            """
+        ),
+        code(
+            """
+            text = events[["event_id", "channel", "note"]].copy()
+            # na=False: missing text -> False (the pandas-3 str dtype already does this; 2.x object dtype
+            # gives NaN, which loc rejects).
+            text["is_refund"] = text["note"].str.contains("refund", case=False, na=False)
+            # One capture group with expand=False returns a Series; expand=True would return a DataFrame.
+            text["order_id"] = text["note"].str.extract(r"(ORD-\\d+)", expand=False)
+            # Split once from the left; expand=True spreads the pieces into columns (missing text -> NaN).
+            text[["note_key", "note_value"]] = text["note"].str.split("=", n=1, expand=True)
+            # Strip non-digits, then cast to nullable Int64 so the missing note stays <NA>.
+            text["order_number"] = text["order_id"].str.replace(r"\\D+", "", regex=True).astype("Int64")
+            text["note_length"] = text["note"].str.len()
+            # Chain string methods for cleanup; each call returns a new Series.
+            text["channel_code"] = text["channel"].str.strip().str.upper().str[:3]
+
+            print(
+                "Strings | flags, extraction, split, cleanup",
+                text[["note", "is_refund", "order_id", "note_key", "order_number", "note_length", "channel_code"]],
+            )
+            print("Strings | refund flag counts", text["is_refund"].value_counts().to_dict())
+            """
+        ),
+        md(
+            """
+            ## 17. Reshape I: `pivot` versus `pivot_table` and flattening MultiIndex columns
+
+            Question: revenue per user by channel as a wide table? `pivot` requires one row per (index, column) pair and raises on duplicates; `pivot_table` aggregates duplicates with `aggfunc`. One value and one function give flat headers; lists for `values` or `aggfunc` give multi-level headers that must be flattened before code addresses columns by name. Failure mode prevented: `pivot` raising on duplicates in production data, or downstream code addressing tuple-named columns.
+            """
+        ),
+        code(
+            """
+            # pivot needs unique (user_id, channel) pairs; the fixture has repeats, so it raises.
+            try:
+                events.pivot(index="user_id", columns="channel", values="revenue")
+                pivot_error = "no error"
+            except ValueError as error:
+                pivot_error = str(error)
+            # pivot_table aggregates duplicates; single value + single aggfunc -> flat headers named by channel.
+            revenue_by_channel = events.pivot_table(
+                index="user_id", columns="channel", values="revenue", aggfunc="sum", fill_value=0
+            )
+            # Rename the flat headers so downstream code sees plain, prefixed strings.
+            revenue_by_channel.columns = [f"revenue_{channel}" for channel in revenue_by_channel.columns]
+            # Lists for values and aggfunc -> three header levels: (aggfunc, value, channel).
+            multi = events.pivot_table(
                 index="user_id",
                 columns="channel",
-                values="revenue",
-                aggfunc="sum",
+                values=["revenue", "quantity"],
+                aggfunc=["sum", "mean"],
                 fill_value=0,
             )
-            revenue_matrix.columns = [f"revenue_{column}" for column in revenue_matrix.columns]
-            wide = revenue_matrix.reset_index()
-            long = wide.melt(id_vars="user_id", var_name="metric", value_name="value")  # Return metric columns to tidy rows.
+            levels_before = multi.columns.nlevels
+            # Flatten the tuples to 'sum_revenue_web'; map(str) guards non-string levels.
+            multi.columns = ["_".join(map(str, col)) for col in multi.columns]
+            # Move user_id from the index to a column before melting or merging.
+            wide = revenue_by_channel.reset_index()
 
-            print("Reshape | revenue pivot table", wide)
-            print("Reshape | melted long form", long.head(9))
+            print("Reshape | pivot on duplicate pairs raises", pivot_error)
+            print("Reshape | pivot_table with flat headers", wide)
+            print("Reshape | header levels before flattening", levels_before)
+            print("Reshape | flattened names", multi.columns.tolist())
+            print("Reshape | two flattened columns", multi[["sum_revenue_web", "mean_revenue_web"]])
             """
         ),
-        md("## 9. Validated joins and unmatched-key checks"),
+        md(
+            """
+            ## 18. Reshape II: `melt` (wide to long) and back
+
+            Question: how do I turn one column per metric into tidy (key, metric, value) rows for grouping or plotting, and invert it? `melt` keeps `id_vars` and stacks the remaining columns; `pivot` inverts it when (id, metric) pairs are unique. Failure mode prevented: looping over columns to build long data by hand.
+            """
+        ),
         code(
             """
-            users = pd.DataFrame(
-                {
-                    "user_id": [101, 102, 103, 104],
-                    "segment": ["growth", "core", "growth", "new"],
-                }
-            )
-            joined = events.merge(
+            # Wide metric columns -> one (user_id, metric, value) row each: tidy form for groupby/plotting.
+            long = wide.melt(id_vars="user_id", var_name="metric", value_name="value")
+            # (user_id, metric) pairs are unique after melt, so pivot inverts it without aggregation.
+            back_to_wide = long.pivot(index="user_id", columns="metric", values="value").reset_index()
+            # Cosmetic: drop the 'metric' axis name that pivot leaves on the header; equals() ignores it.
+            back_to_wide.columns.name = None
+
+            print("Reshape | long form head", long.head(6))
+            print("Reshape | round trip restores the wide table", back_to_wide.equals(wide))
+            """
+        ),
+        md(
+            """
+            ## 19. Combine I: `pd.merge` with validation, an indicator, and suffixes
+
+            Question: enrich events with user attributes without changing the event grain? State the expected cardinality with `validate` (raises on a duplicate lookup key that would multiply rows); `indicator=True` records match provenance per row; `suffixes` resolves non-key columns present on both sides; `left_on`/`right_on` handle differing key names. An outer join with the indicator is the cleanest unmatched-key audit. Failure mode prevented: a one-to-many lookup silently inflating the event count.
+            """
+        ),
+        code(
+            """
+            joined = pd.merge(
+                events,
                 users,
                 on="user_id",
+                # Keep every event; an unmatched event would receive NaN in the user columns.
                 how="left",
-                validate="many_to_one",  # Fail if the supposed lookup table would multiply event rows.
-                indicator=True,           # Retain row-level match provenance for the join audit.
+                # Raise if users had duplicate user_id rows that would multiply events.
+                validate="many_to_one",
+                # Adds _merge in {left_only, right_only, both} for row-level auditing.
+                indicator=True,
+                # Overlapping non-key column 'channel': left keeps its name, right becomes channel_preferred.
+                suffixes=("", "_preferred"),
             )
-            unmatched = joined.loc[joined["_merge"] != "both", ["event_id", "user_id", "_merge"]]
+            # Outer join audit: right_only rows are users with no events (user 104).
+            audit = pd.merge(
+                events[["event_id", "user_id"]], users[["user_id"]], on="user_id", how="outer", indicator=True
+            )
+            users_without_events = audit.loc[audit["_merge"] == "right_only", "user_id"].tolist()
+            # Differing key names: left_on/right_on; both key columns survive in the result.
+            renamed_users = users.rename(columns={"user_id": "id"})
+            keyed_join = pd.merge(
+                events[["event_id", "user_id"]],
+                renamed_users[["id", "segment"]],
+                left_on="user_id",
+                right_on="id",
+                how="left",
+            )
 
-            print("Join | events enriched with segment", joined.head(8))
-            print("Join audit | unmatched event keys", unmatched)
+            print(
+                "Join | enriched events",
+                joined[["event_id", "user_id", "channel", "segment", "channel_preferred", "_merge"]].head(5),
+            )
+            print("Join | grain preserved (rows before, after)", (len(events), len(joined)))
+            # _merge is categorical, so value_counts lists every level, including zero counts.
+            print("Join | match provenance", joined["_merge"].value_counts().to_dict())
+            print("Join | users without events", users_without_events)
+            print("Join | left_on/right_on keeps both key columns", keyed_join.head(2))
             """
         ),
-        md("## 10. Retrieval checks"),
+        md(
+            """
+            ## 20. Combine II: `pd.concat` by rows and by columns
+
+            Question: append batches, or place two frames side by side? `concat` matches nothing by key: `axis=0` stacks rows (union of columns, NaN where a column is missing; `ignore_index=True` renumbers); `axis=1` aligns on index labels, so two frames with disjoint indexes produce NaN gaps unless both are reset to 0..n-1. Failure mode prevented: a NaN-filled "side-by-side" frame that looks like a join.
+            """
+        ),
         code(
             """
+            first_rows, remaining_rows = events.iloc[:5], events.iloc[5:]
+            # Row-wise append of same-schema frames; ignore_index renumbers 0..n-1 instead of keeping fragments.
+            stacked = pd.concat([first_rows, remaining_rows], ignore_index=True)
+            left_block = events.iloc[:3][["event_id"]]
+            right_block = events.iloc[3:6][["revenue"]]
+            # axis=1 aligns on index labels: {0, 1, 2} and {3, 4, 5} are disjoint, so every row has a NaN gap.
+            misaligned = pd.concat([left_block, right_block], axis=1)
+            # Reset both indexes when the intent is positional side-by-side placement.
+            side_by_side = pd.concat(
+                [left_block.reset_index(drop=True), right_block.reset_index(drop=True)], axis=1
+            )
+            # Differing schemas: the union of columns, NaN where a frame lacks the column.
+            mixed_schema = pd.concat([events[["event_id"]].head(2), users[["user_id"]].head(2)], ignore_index=True)
+
+            print("Concat | rows recombined equal the source", stacked.equals(events))
+            print("Concat | axis=1 on disjoint indexes", misaligned)
+            print("Concat | axis=1 after reset_index", side_by_side)
+            print("Concat | union of differing columns", mixed_schema)
+            """
+        ),
+        md(
+            """
+            ## 21. Quick plots from a frame
+
+            Question: a one-line look at a distribution, category counts, or a relationship during an interview? `Series.plot`/`DataFrame.plot` wrap matplotlib; aggregate before plotting bars. Failure mode prevented: plotting raw categorical rows instead of their counts. Outputs of this cell are cleared before committing (`clear-output` tag); question-driven Seaborn plots live in the visualization notebook.
+            """
+        ),
+        code(
+            """
+            import matplotlib.pyplot as plt
+
+            # Series.plot draws on the current axes; kind selects the chart type.
+            events["revenue"].plot(kind="hist", bins=6, title="Revenue distribution")
+            plt.show()
+            # Aggregate first, then plot the aggregate as bars.
+            events["channel"].value_counts().plot(kind="bar", title="Events per channel")
+            plt.show()
+            # DataFrame.plot with x/y for a two-column relationship.
+            events.plot(x="quantity", y="revenue", kind="scatter", alpha=0.6, title="Quantity versus revenue")
+            plt.show()
+            # Release figure memory in long sessions; the vault stores no images from this cell.
+            plt.close("all")
+            """,
+            tags=["clear-output"],
+        ),
+        md(
+            """
+            ## 22. Gotchas checklist
+
+            - Chained assignment `df[mask]["col"] = v` never reaches the parent: write `df.loc[mask, "col"] = v`.
+            - `merge` multiplies rows when the lookup key is not unique: pass `validate=`, inspect `indicator=`.
+            - `concat(axis=1)` aligns on index labels, not position: reset both indexes first.
+            - Window functions need an explicit sort; `rolling(3)` is three rows, `rolling("3D")` is three days of timestamps.
+            - `groupby().rolling()` returns a `(key, index)` MultiIndex; `transform` keeps the original index.
+            - `group_keys` affects only `apply`; prefer `agg`/`transform`.
+            - `count()` and `value_counts()` skip NaN: use `size` and `dropna=False` for audits; `groupby` drops NaN keys unless `dropna=False`.
+            - Lists in `agg`/`pivot_table` create MultiIndex columns: flatten with `"_".join(map(str, col))`.
+            - Sub-daily offset aliases are lowercase (`"h"`, `"min"`, `"s"`); `floor`/`round`/`ceil` accept only those fixed frequencies plus `"D"`. Month/quarter/year-end offsets are `"ME"`/`"QE"`/`"YE"` for `resample`, `date_range`, and `Grouper`; `"H"` and `"M"` raise in pandas 3, while `to_period` keeps `"M"`/`"Q"` and `"D"`/`"W"` are unchanged.
+            - `groupby(ts.dt.normalize())` drops calendar days with no rows; `resample("D")` or `pd.Grouper(freq="D")` keeps them as rows (0 for `sum`/`count`/`nunique`, NaN for `mean`).
+            - A categorical column accepts only existing levels in `fillna`: add the level first.
+            - Dates left as strings sort lexically: parse at the boundary with `errors="coerce"` and count the NaT rows.
+            """
+        ),
+        md(
+            """
+            ## 23. Retrieval drills and checks
+
+            Attempt each from a blank cell, then compare with the section in brackets:
+
+            1. Latest event per user and top-2 distinct revenue values per user [6].
+            2. One row per user with count, total, and last-seen; keep the key as a column [8].
+            3. Revenue minus the user's mean revenue for every event [9].
+            4. Previous revenue, gap in hours, and a lagged 2-row mean per user [11-12].
+            5. Trailing 2-day revenue sum joined back on `(user_id, timestamp)` [13].
+            6. Flag refunds in free text and extract the order id [16].
+            7. Revenue by channel as a wide table, flattened, then melted back [17-18].
+            8. Enrich events with user segment and prove the row count did not change [19].
+
+            ### 20-minute pass
+
+            1. 5 min: inspect, normalize headers, coerce numeric/datetime, audit missing values [1, 4, 5].
+            2. 5 min: top-k per group, named aggregation with `as_index=False`, `transform` [6, 8, 9].
+            3. 5 min: lag/lead, row rolling via `transform`, time rolling plus key merge [11-13].
+            4. 5 min: `pivot_table` flatten, `melt`, `pd.merge` with `validate` [17-19].
+            """
+        ),
+        code(
+            """
+            assert events["event_id"].is_unique
             assert top_two.groupby("user_id").size().eq(2).all()
-            assert joined["event_id"].is_unique
-            assert recombined.equals(events)
-            assert cleaned[["revenue", "channel"]].notna().all().all()
-            assert long.shape[0] == len(wide) * len(revenue_matrix.columns)
-            assert ordered.groupby("user_id")["timestamp"].apply(lambda values: values.is_monotonic_increasing).all()
+            assert top_two_unique.loc[top_two_unique["user_id"] == 103, "revenue"].tolist() == [55, 25]
+            assert user_summary_flat["user_id"].tolist() == [101, 102, 103]
+            assert via_transform.equals(via_groupby_rolling)
+            assert ordered["revenue_2d_sum"].notna().all()
+            assert ordered.groupby("user_id")["timestamp"].apply(lambda series: series.is_monotonic_increasing).all()
+            assert imputed[["revenue", "channel"]].notna().all().all()
+            assert int(text["is_refund"].sum()) == 3
+            assert back_to_wide.equals(wide)
+            assert len(joined) == len(events) and joined["event_id"].is_unique
+            assert stacked.equals(events)
 
             print("Drill checks | status", "all assertions passed")
             """
